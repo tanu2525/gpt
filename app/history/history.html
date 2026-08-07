@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Message History</title>
+
+    <link rel="stylesheet" href="history.css">
+
+</head>
+
+<body>
+
+    <h2>Delivery History</h2>
+
+    <div class="toolbar">
+
+        <input
+            type="text"
+            id="search"
+            placeholder="Search Recipient">
+
+        <select id="channelFilter">
+
+            <option value="">All Channels</option>
+
+            <option value="whatsapp">WhatsApp</option>
+
+            <option value="sms">SMS</option>
+
+            <option value="email">Email</option>
+
+            <option value="rcs">RCS</option>
+
+            <option value="voice">Voice</option>
+
+        </select>
+
+    </div>
+
+    <table id="historyTable">
+
+        <thead>
+
+            <tr>
+
+                <th>Date</th>
+
+                <th>Channel</th>
+
+                <th>Recipient</th>
+
+                <th>Template</th>
+
+                <th>Status</th>
+
+                <th>Action</th>
+
+            </tr>
+
+        </thead>
+
+        <tbody>
+
+        </tbody>
+
+    </table>
+   <div id="detailModal" class="modal">
+
+    <div class="modal-content">
+
+        <span id="closeModal">&times;</span>
+
+        <div id="details"></div>
+
+    </div>
+
+</div>
+    <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+    <script src="../common/auth.js"></script>
+    <script src="../common/api.js"></script>
+
+    <script src="history.js"></script>
+
+</body>
+
+</html>

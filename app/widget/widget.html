@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Send Message</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+ <div id="leadInfo" style="margin-bottom: 16px; font-size: 0.95rem; color: #333;">
+        <strong>Lead Phone:</strong>
+        <span id="leadPhoneLabel">Loading lead details...</span>
+    </div>
+    
+   <label>Channel</label><br>
+
+<select id="channel">
+    <option value="whatsapp">WhatsApp</option>
+    <option value="sms">SMS</option>
+    <option value="rcs">RCS</option>
+    <option value="email">Email</option>
+    <option value="voice">Voice</option>
+</select>
+
+<br><br>
+
+   
+
+    <label>Select Template</label><br>
+
+    <select id="templateSelect">
+        <option value="">Loading...</option>
+    </select>
+
+    <br><br>
+
+
+    <div id="variablesContainer"></div>
+
+<br>
+
+    <textarea
+        id="preview"
+        rows="8"
+        cols="50"
+        readonly>
+    </textarea>
+
+    <br><br>
+
+    
+
+    <button id="sendBtn" type="button">
+        Send message
+    </button>
+    <p id="sendStatus" role="status"></p>
+    <a id="configureAuthkey" href="../settings/settings.html" target="_blank" hidden>Configure Authkey credentials</a>
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+<script src="../common/auth.js"></script>
+<script src="../common/api.js"></script>
+<script src="../common/lead.js"></script>
+<script src="../common/template.js"></script>
+<script src="../common/variables.js"></script>
+<script src="../common/ui.js"></script>
+<script src="../common/preview.js"></script>
+<script src="script.js"></script>
+
+</body>
+
+</html>
