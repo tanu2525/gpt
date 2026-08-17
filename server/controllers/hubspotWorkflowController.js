@@ -1,4 +1,4 @@
-const messageService = require("../services/messageService");
+const messageService = require("../Services/messageService");
 
 async function sendWorkflowMessage(req, res) {
 
