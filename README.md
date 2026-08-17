@@ -16,6 +16,24 @@ This project is the backend and embedded widgets for an Authkey Zoho CRM extensi
 2. Run `npm install` and `npm start` from this folder.
 3. Trust the local development certificate and load the app from `https://127.0.0.1:5000/app`.
 
+## Deployment URL
+
+Set `APP_BASE_PATH=/v6/api` in the deployed environment. The server serves every page below `/v6/api/app`, including:
+
+- `https://stagnapi.authkey.io/v6/api/app/widget/widget.html`
+- `https://stagnapi.authkey.io/v6/api/app/history/history.html`
+- `https://stagnapi.authkey.io/v6/api/app/settings/settings.html`
+- `https://stagnapi.authkey.io/v6/api/app/bulk/bulk.html`
+- `https://stagnapi.authkey.io/v6/api/app/workflow/workflow.html`
+
+Each page derives its API prefix from its current URL and gets the organization ID from Zoho CRM rather than a hard-coded value. Deployed API endpoints use the clean `/v6/api/...` form, while local `/app/...` pages continue to use `/api/...`.
+
+## Automatic Zoho CRM workflows
+
+Saving a workflow creates a protected endpoint for that specific configuration. In Zoho CRM, create a workflow rule for the same module/event and add a **Webhook** instant action. Use the URL displayed after saving the configuration and add the header `X-Workflow-Secret` with the value of `WORKFLOW_WEBHOOK_SECRET` from the deployed environment. Use a **Raw JSON** body; add `recordId` and every CRM field selected as the recipient or a variable mapping (for example, `Mobile` and `First_Name`). Insert the matching Zoho CRM merge field for each JSON value using the webhook editor's merge-field picker.
+
+The endpoint uses the saved workflow's organization, channel, template, recipient field, and variable mappings, then sends the message and records it in delivery history. Set a long random `WORKFLOW_WEBHOOK_SECRET` in the deployed environment before enabling the Zoho rule.
+
 ## Before Marketplace release
 
 - Replace the locally generated TLS certificate with a public HTTPS deployment.

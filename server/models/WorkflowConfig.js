@@ -24,6 +24,11 @@ const WorkflowConfigSchema = new mongoose.Schema({
     variables: {
         type: Object,
         default: {}
+    },
+
+    enabled: {
+        type: Boolean,
+        default: true
     }
 
 }, {

@@ -29,6 +29,11 @@ process.env.PWD = process.env.PWD || process.cwd();
 
 var port = process.env.PORT;
 var expressApp = express();
+var projectRoot = path.resolve(__dirname, "..");
+var appDirectory = path.join(projectRoot, "app");
+// Serve the same application locally and below the public reverse-proxy path.
+var configuredBasePath = (process.env.APP_BASE_PATH || "/v6/api").replace(/\/+$/, "");
+if (configuredBasePath && !configuredBasePath.startsWith("/")) configuredBasePath = "/" + configuredBasePath;
 expressApp.set('port', port);
 expressApp.use(morgan('dev'));
 expressApp.use(bodyParser.json({ verify: (req, res, buffer) => { req.rawBody = buffer; } }));
@@ -57,6 +62,19 @@ expressApp.get('/plugin-manifest.json', function (req, res) {
 
 expressApp.use('/app', express.static('app'));
 expressApp.use('/app', serveIndex('app'));
+
+expressApp.use(configuredBasePath + "/templates", templateRoutes);
+expressApp.use(configuredBasePath + "/authkey", authkeyRoutes);
+expressApp.use(configuredBasePath + "/message", messageRoutes);
+expressApp.use(configuredBasePath + "/callbacks", callbackRoutes);
+expressApp.use(configuredBasePath + "/bulk", bulkRoutes);
+expressApp.use(configuredBasePath + "/history", historyRoutes);
+expressApp.use(configuredBasePath + "/workflow", wf);
+expressApp.get(configuredBasePath + "/plugin-manifest.json", function (req, res) {
+  res.sendFile(path.join(projectRoot, "plugin-manifest.json"));
+});
+expressApp.use(configuredBasePath + "/app", express.static(appDirectory));
+expressApp.use(configuredBasePath + "/app", serveIndex(appDirectory));
 
 
 expressApp.get('/', function (req, res) {

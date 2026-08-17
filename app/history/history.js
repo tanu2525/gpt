@@ -36,11 +36,7 @@ async function loadHistory() {
 
 async function viewDetails(id){
 
-    const response =
-        await fetch(`/api/history/detail/${id}`);
-
-    const log =
-        await response.json();
+    const log = await requestJson(`/api/history/detail/${encodeURIComponent(id)}`);
 
     document.getElementById("details").innerHTML = `
 
@@ -112,9 +108,7 @@ document
 
 async function showDetails(event, id) {
 
-    const response = await fetch(`/api/history/detail/${id}`);
-
-    const log = await response.json();
+    const log = await requestJson(`/api/history/detail/${encodeURIComponent(id)}`);
 
     const tooltip = document.getElementById("detailTooltip");
 

@@ -1,5 +1,5 @@
 async function requestJson(url, options = {}) {
-    const response = await fetch(url, options);
+    const response = await fetch(getApiUrl(url), options);
     let data;
 
     try {
@@ -13,6 +13,17 @@ async function requestJson(url, options = {}) {
     }
 
     return data;
+}
+
+function getApiUrl(url) {
+    // Locally the app lives at /app; production is hosted below /v6/api/app.
+    if (!url.startsWith("/")) return url;
+    const match = window.location.pathname.match(/^(.*)\/app(?:\/|$)/);
+    if (!match || !match[1]) return url;
+
+    // The deployed base already ends in /api, so remove the local-only API prefix.
+    const endpoint = url === "/api" ? "" : url.replace(/^\/api(?=\/)/, "");
+    return match[1] + endpoint;
 }
 
 async function getChannelTemplates(channel) {

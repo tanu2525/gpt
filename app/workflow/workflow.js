@@ -1,7 +1,12 @@
-document.addEventListener("DOMContentLoaded", async () => {
-
+async function initializeWorkflow() {
     await loadTemplates();
+    await previewWorkflow();
+}
 
+ZOHO.embeddedApp.on("PageLoad", () => {
+    initializeWorkflow().catch(error => {
+        document.getElementById("status").textContent = error.message;
+    });
 });
 async function saveWorkflow(){
 
@@ -61,8 +66,8 @@ async function saveWorkflow(){
 
     };
 
-    const response=
-        await fetch(
+    try {
+        const result = await requestJson(
 
             "/api/workflow/save",
 
@@ -82,18 +87,14 @@ async function saveWorkflow(){
 
         );
 
-    const result=
-        await response.json();
-
-    document
-    .getElementById("status")
-    .innerHTML=
-
-    response.ok
-
-    ?"Workflow Saved"
-
-    :result.message;
+        const webhookUrl = `${window.location.origin}${getApiUrl(`/api/workflow/trigger/${result.workflowId}`)}`;
+        document.getElementById("status").replaceChildren(
+            "Workflow saved. Add this URL to the Zoho CRM workflow webhook: ",
+            Object.assign(document.createElement("code"), { textContent: webhookUrl })
+        );
+    } catch (error) {
+        document.getElementById("status").textContent = error.message;
+    }
 
 }
 async function getModuleFields(moduleName) {
@@ -114,7 +115,7 @@ async function renderMappings(body) {
 
     container.innerHTML = "";
 
-    const variables = extractVariables(body);
+    const variables = getTemplateVariables(body);
 
     const module =
         document.getElementById("module").value;
@@ -169,7 +170,11 @@ document
 
 document
 .getElementById("channel")
-.addEventListener("change", loadTemplates);
+.addEventListener("change", () => {
+    loadTemplates()
+        .then(previewWorkflow)
+        .catch(error => { document.getElementById("status").textContent = error.message; });
+});
 
 document
 .getElementById("templateSelect")
@@ -178,4 +183,6 @@ document
 document
 .getElementById("saveBtn")
 .addEventListener("click", saveWorkflow);
+
+ZOHO.embeddedApp.init();
 

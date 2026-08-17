@@ -2,6 +2,7 @@ const axios = require("axios");
 
 const messageService =
 require("./messageService");
+const WorkflowConfig = require("../models/WorkflowConfig");
 
 async function fetchLead(
     recordId,
@@ -13,7 +14,6 @@ async function fetchLead(
     await axios.get(
 
         `https://www.zohoapis.com/crm/v7/${module}/${recordId}`,
-
         {
 
             headers:{
@@ -87,4 +87,37 @@ async function(data){
 
     });
 
+};
+
+exports.trigger = async function(workflowId, payload) {
+    const workflow = await WorkflowConfig.findOne({ _id: workflowId, enabled: true });
+    if (!workflow) {
+        const error = new Error("Workflow was not found or is disabled.");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const record = payload.record && typeof payload.record === "object" ? payload.record : payload;
+    const recipient = record[workflow.recipientField] || payload.recipient;
+    if (!recipient) {
+        const error = new Error(`The webhook did not include the ${workflow.recipientField} recipient field.`);
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const variables = Object.fromEntries(
+        Object.entries(workflow.variables || {}).map(([name, field]) => [name, record[field] ?? ""])
+    );
+    const sent = await messageService.sendMessage({
+        organizationId: workflow.organizationId,
+        channel: workflow.channel,
+        recipient,
+        templateId: workflow.templateId,
+        templateName: workflow.templateName,
+        recordId: payload.recordId || record.id || record.Id,
+        module: workflow.module,
+        variables
+    });
+
+    return { workflowId: workflow._id, logId: sent.log._id };
 };
