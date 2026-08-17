@@ -34,6 +34,10 @@ Saving a workflow creates a protected endpoint for that specific configuration. 
 
 The endpoint uses the saved workflow's organization, channel, template, recipient field, and variable mappings, then sends the message and records it in delivery history. Set a long random `WORKFLOW_WEBHOOK_SECRET` in the deployed environment before enabling the Zoho rule.
 
+## Delivery and inbound callbacks
+
+Configure Authkey to send delivery updates to `POST /v6/api/callbacks/delivery` and inbound replies to `POST /v6/api/callbacks/inbound`. Both routes require an `X-Authkey-Signature` header containing the SHA-256 HMAC of the raw request body, calculated with `AUTHKEY_WEBHOOK_SECRET`. Delivery callbacks must include the provider message ID returned when the message was submitted. Inbound callbacks must additionally include `organizationId` and the sender (`mobile`, `email`, or `recipient`).
+
 ## Before Marketplace release
 
 - Replace the locally generated TLS certificate with a public HTTPS deployment.

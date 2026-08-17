@@ -2,6 +2,12 @@ let recordId = null;
 
 let moduleName = null;
 
+function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[character]));
+}
+
 ZOHO.embeddedApp.on("PageLoad", async () => {
 
     await loadHistory();
@@ -46,32 +52,32 @@ async function viewDetails(id){
 
 <tr>
 <td>Channel</td>
-<td>${log.channel}</td>
+<td>${escapeHtml(log.channel)}</td>
 </tr>
 
 <tr>
 <td>Recipient</td>
-<td>${log.recipient}</td>
+<td>${escapeHtml(log.recipient)}</td>
 </tr>
 
 <tr>
 <td>Template</td>
-<td>${log.templateName || log.templateId}</td>
+<td>${escapeHtml(log.templateName || log.templateId)}</td>
 </tr>
 
 <tr>
 <td>Template ID</td>
-<td>${log.templateId}</td>
+<td>${escapeHtml(log.templateId)}</td>
 </tr>
 
 <tr>
 <td>Status</td>
-<td>${log.status}</td>
+<td>${escapeHtml(log.status)}</td>
 </tr>
 
 <tr>
 <td>Provider ID</td>
-<td>${log.providerMessageId || "-"}</td>
+<td>${escapeHtml(log.providerMessageId || "-")}</td>
 </tr>
 
 <tr>
@@ -83,7 +89,7 @@ async function viewDetails(id){
 
 <h4>Provider Response</h4>
 
-<pre>${JSON.stringify(log.payload, null, 2)}</pre>
+<pre>${escapeHtml(JSON.stringify(log.payload, null, 2))}</pre>
 
 `;
 
@@ -114,21 +120,21 @@ async function showDetails(event, id) {
 
     tooltip.innerHTML = `
 
-<b>Channel:</b> ${log.channel}<br>
+<b>Channel:</b> ${escapeHtml(log.channel)}<br>
 
-<b>Recipient:</b> ${log.recipient}<br>
+<b>Recipient:</b> ${escapeHtml(log.recipient)}<br>
 
-<b>Template:</b> ${log.templateName || log.templateId}<br>
+<b>Template:</b> ${escapeHtml(log.templateName || log.templateId)}<br>
 
-<b>Status:</b> ${log.status}<br>
+<b>Status:</b> ${escapeHtml(log.status)}<br>
 
-<b>Provider ID:</b> ${log.providerMessageId || "-"}<br>
+<b>Provider ID:</b> ${escapeHtml(log.providerMessageId || "-")}<br>
 
 <hr>
 
 <pre style="white-space:pre-wrap;font-size:11px">
 
-${JSON.stringify(log.payload,null,2)}
+${escapeHtml(JSON.stringify(log.payload,null,2))}
 
 </pre>
 
@@ -162,17 +168,17 @@ function renderTable(logs){
 
 <td>${new Date(log.createdAt).toLocaleString()}</td>
 
-<td>${log.channel}</td>
+<td>${escapeHtml(log.channel)}</td>
 
-<td>${log.recipient}</td>
+<td>${escapeHtml(log.recipient)}</td>
 
-<td>${log.templateName || log.templateId}</td>
+<td>${escapeHtml(log.templateName || log.templateId)}</td>
 
 <td>
 
-<span class="${log.status}">
+<span class="${escapeHtml(log.status)}">
 
-${log.status}
+${escapeHtml(log.status)}
 
 </span>
 
@@ -182,7 +188,7 @@ ${log.status}
 
 <button
 class="viewBtn"
-onclick="viewDetails('${log._id}')">
+onclick="viewDetails('${escapeHtml(log._id)}')">
 
 View
 

@@ -15,6 +15,8 @@ const WorkflowConfigSchema = new mongoose.Schema({
 
     channel: String,
 
+    fallbackChannel: String,
+
     templateId: String,
 
     templateName: String,

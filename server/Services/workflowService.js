@@ -108,7 +108,7 @@ exports.trigger = async function(workflowId, payload) {
     const variables = Object.fromEntries(
         Object.entries(workflow.variables || {}).map(([name, field]) => [name, record[field] ?? ""])
     );
-    const sent = await messageService.sendMessage({
+    const message = {
         organizationId: workflow.organizationId,
         channel: workflow.channel,
         recipient,
@@ -117,7 +117,14 @@ exports.trigger = async function(workflowId, payload) {
         recordId: payload.recordId || record.id || record.Id,
         module: workflow.module,
         variables
-    });
+    };
 
-    return { workflowId: workflow._id, logId: sent.log._id };
+    try {
+        const sent = await messageService.sendMessage(message);
+        return { workflowId: workflow._id, logId: sent.log._id, channel: workflow.channel };
+    } catch (primaryError) {
+        if (!workflow.fallbackChannel || workflow.fallbackChannel === workflow.channel) throw primaryError;
+        const sent = await messageService.sendMessage({ ...message, channel: workflow.fallbackChannel });
+        return { workflowId: workflow._id, logId: sent.log._id, channel: workflow.fallbackChannel, fallbackUsed: true, primaryError: primaryError.message };
+    }
 };

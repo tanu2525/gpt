@@ -18,6 +18,7 @@
     "mongodb": "^7.5.0",
     "mongoose": "^9.8.1",
     "morgan": "^1.6.1",
+    "nodemon": "^3.1.14",
     "portfinder": "^1.0.25",
     "serve-index": "^1.9.0"
   }

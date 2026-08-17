@@ -47,6 +47,11 @@ async function saveWorkflow(){
             .getElementById("channel")
             .value,
 
+        fallbackChannel:
+            document
+            .getElementById("fallbackChannel")
+            .value,
+
         templateId:
             document
             .getElementById("templateSelect")
