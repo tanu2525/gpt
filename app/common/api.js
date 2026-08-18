@@ -16,14 +16,22 @@ async function requestJson(url, options = {}) {
 }
 
 function getApiUrl(url) {
-    // Locally the app lives at /app; production is hosted below /v6/api/app.
-    if (!url.startsWith("/")) return url;
-    const match = window.location.pathname.match(/^(.*)\/app(?:\/|$)/);
-    if (!match || !match[1]) return url;
+    if (/^https?:\/\//i.test(url)) {
+        return url;
+    }
 
-    // The deployed base already ends in /api, so remove the local-only API prefix.
-    const endpoint = url === "/api" ? "" : url.replace(/^\/api(?=\/)/, "");
-    return match[1] + endpoint;
+    const match = window.location.pathname.match(/^(.+)\/app(?:\/|$)/);
+
+    if (!match) {
+        return url;
+    }
+    const baseUrl = window.location.origin + match[1];
+
+    const endpoint = url.startsWith("/")
+        ? url
+        : `/${url}`;
+
+    return baseUrl + endpoint;
 }
 
 async function getChannelTemplates(channel) {
