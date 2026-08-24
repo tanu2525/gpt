@@ -110,7 +110,7 @@ exports.trigger = async function(workflowId, payload) {
     );
     const message = {
         organizationId: workflow.organizationId,
-        channel: workflow.channel,
+        channel: String(workflow.channel).toLowerCase(),
         recipient,
         templateId: workflow.templateId,
         templateName: workflow.templateName,

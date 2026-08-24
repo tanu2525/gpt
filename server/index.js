@@ -1,9 +1,7 @@
 var path = require('path');
-require("dotenv").config({ path: path.join(__dirname, '/config', 'env') });
-console.log("path", path.join(__dirname, '/config', 'env'));
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const express = require("express");
 const morgan = require("morgan");
-console.log("__dirname",__dirname);
 const connectDB = require("./config/db.js");
 
 // Routes
