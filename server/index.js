@@ -13,6 +13,9 @@ const callbackRoutes = require("./routes/callbacks");
 const bulkRoutes = require("./routes/bulk");
 const workflowRoutes = require("./routes/workflow");
 const hubspotWorkflowRoutes = require("./routes/hubspotWorkflowRoutes");
+const zohoMetadataRoutes =
+    require("./routes/zohoMetadata");
+
 
 
 // --------------------------------------------------
@@ -151,6 +154,10 @@ app.use(
   workflowRoutes
 );
 
+app.use(
+    "/api/zoho",
+    zohoMetadataRoutes
+);
 // HubSpot workflow
 app.use(
   `/api/hubspot/workflow`,

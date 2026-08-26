@@ -1,41 +1,80 @@
 const axios = require("axios");
 
 const messageService =
-require("./messageService");
-const WorkflowConfig = require("../models/WorkflowConfig");
+    require("./messageService");
 
-async function fetchLead(
+const WorkflowConfig =
+    require("../models/WorkflowConfig");
+
+const zohoOAuthService =
+    require("./zohoOAuthService");
+
+async function fetchRecord(
     recordId,
     module,
-    accessToken
-){
+    accessToken,
+    apiDomain
+) {
+    if (!recordId) {
+        throw new Error(
+            "Zoho recordId is required."
+        );
+    }
+
+    if (!module) {
+        throw new Error(
+            "Zoho module is required."
+        );
+    }
 
     const response =
-    await axios.get(
-
-        `https://www.zohoapis.com/crm/v7/${module}/${recordId}`,
-        {
-
-            headers:{
-
-                Authorization:
-                `Zoho-oauthtoken ${accessToken}`
-
+        await axios.get(
+            `${String(
+                apiDomain ||
+                "https://www.zohoapis.com"
+            ).replace(/\/$/, "")}/crm/v8/${encodeURIComponent(module)}/${encodeURIComponent(recordId)}`,
+            {
+                headers: {
+                    Authorization:
+                        `Zoho-oauthtoken ${accessToken}`
+                }
             }
+        );
 
-        }
+    return response.data?.data?.[0];
+}
 
+function getRecordId(payload) {
+    return (
+        payload.recordId ||
+        payload.id ||
+        payload.record?.id ||
+        payload.record?.Id ||
+        payload.ids?.[0]
     );
+}
 
-    return response.data.data[0];
+async function resolveAccessToken(
+    organizationId,
+    accessToken
+) {
+   if (accessToken) {
+    return {
+        accessToken,
+        apiDomain:
+            process.env.ZOHO_API_DOMAIN ||
+            "https://sandbox.zohoapis.com"
+    };
+}
 
+    return zohoOAuthService.getAccessToken(
+        organizationId
+    );
 }
 
 exports.send =
-async function(data){
-
+async function(data) {
     const {
-
         organizationId,
         accessToken,
         recordId,
@@ -44,87 +83,221 @@ async function(data){
         templateId,
         templateName,
         variables
-
     } = data;
 
-    const record =
-    await fetchLead(
-
-        recordId,
-        module,
-        accessToken
-
-    );
-
-    const recipient =
-    channel==="email"
-
-        ? record.Email
-
-        : (
-            record.Mobile
-            ||
-            record.Phone
+    const tokenData =
+        await resolveAccessToken(
+            organizationId,
+            accessToken
         );
 
-    return await messageService.sendMessage({
+    const record =
+        await fetchRecord(
+            recordId,
+            module,
+            tokenData.accessToken,
+            tokenData.apiDomain
+        );
 
+    if (!record) {
+        throw new Error(
+            `Zoho record ${recordId} was not found.`
+        );
+    }
+
+    const recipient =
+        String(channel).toLowerCase() === "email"
+            ? record.Email
+            : (
+                record.Mobile ||
+                record.Phone
+            );
+
+    if (!recipient) {
+        throw new Error(
+            `No recipient was found in the Zoho ${module} record.`
+        );
+    }
+
+    return messageService.sendMessage({
         organizationId,
-
         channel,
-
         recipient,
-
         templateId,
-
         templateName,
-
         recordId,
-
         module,
-
         variables
-
     });
-
 };
 
-exports.trigger = async function(workflowId, payload) {
-    const workflow = await WorkflowConfig.findOne({ _id: workflowId, enabled: true });
+exports.trigger =
+async function(workflowId, payload) {
+    const workflow =
+        await WorkflowConfig.findOne({
+            _id: workflowId,
+            enabled: true
+        }).select("+zohoNotificationToken");
+
     if (!workflow) {
-        const error = new Error("Workflow was not found or is disabled.");
+        const error =
+            new Error(
+                "Workflow was not found or is disabled."
+            );
+
         error.statusCode = 404;
         throw error;
     }
 
-    const record = payload.record && typeof payload.record === "object" ? payload.record : payload;
-    const recipient = record[workflow.recipientField] || payload.recipient;
+    const record =
+        payload.record &&
+        typeof payload.record === "object"
+            ? payload.record
+            : payload;
+
+    let recipient =
+        record[workflow.recipientField] ||
+        payload.recipient;
+
+    /*
+     * For create/edit notifications, Zoho only gives us
+     * record IDs in the notification callback. Fetch the
+     * complete record before sending.
+     */
+    const recordId =
+        getRecordId(payload);
+
+    const operation =
+        String(
+            payload.operation || ""
+        ).toLowerCase();
+
+    if (!recipient && recordId && operation !== "delete") {
+        const tokenData =
+            await zohoOAuthService.getAccessToken(
+                workflow.organizationId
+            );
+
+        const freshRecord =
+            await fetchRecord(
+                recordId,
+                workflow.module,
+                tokenData.accessToken,
+                tokenData.apiDomain
+            );
+
+        if (freshRecord) {
+            recipient =
+                freshRecord[
+                    workflow.recipientField
+                ];
+
+            Object.assign(
+                record,
+                freshRecord
+            );
+        }
+    }
+
     if (!recipient) {
-        const error = new Error(`The webhook did not include the ${workflow.recipientField} recipient field.`);
+        const error =
+            new Error(
+                `The workflow could not find ${workflow.recipientField} for Zoho ${workflow.module} ${operation || "event"} ${recordId || ""}.`
+            );
+
         error.statusCode = 400;
         throw error;
     }
 
-    const variables = Object.fromEntries(
-        Object.entries(workflow.variables || {}).map(([name, field]) => [name, record[field] ?? ""])
-    );
+    const variables =
+        Object.fromEntries(
+            Object.entries(
+                workflow.variables || {}
+            ).map(
+                ([name, field]) => [
+                    name,
+                    record[field] ?? ""
+                ]
+            )
+        );
+
     const message = {
-        organizationId: workflow.organizationId,
-        channel: String(workflow.channel).toLowerCase(),
+        organizationId:
+            workflow.organizationId,
+
+        channel:
+            String(
+                workflow.channel
+            ).toLowerCase(),
+
         recipient,
-        templateId: workflow.templateId,
-        templateName: workflow.templateName,
-        recordId: payload.recordId || record.id || record.Id,
-        module: workflow.module,
+
+        templateId:
+            workflow.templateId,
+
+        templateName:
+            workflow.templateName,
+
+        recordId,
+
+        module:
+            workflow.module,
+
         variables
     };
 
     try {
-        const sent = await messageService.sendMessage(message);
-        return { workflowId: workflow._id, logId: sent.log._id, channel: workflow.channel };
+        const sent =
+            await messageService.sendMessage(
+                message
+            );
+
+        return {
+            workflowId:
+                workflow._id,
+
+            logId:
+                sent.log?._id,
+
+            channel:
+                workflow.channel
+        };
     } catch (primaryError) {
-        if (!workflow.fallbackChannel || workflow.fallbackChannel === workflow.channel) throw primaryError;
-        const sent = await messageService.sendMessage({ ...message, channel: workflow.fallbackChannel });
-        return { workflowId: workflow._id, logId: sent.log._id, channel: workflow.fallbackChannel, fallbackUsed: true, primaryError: primaryError.message };
+        if (
+            !workflow.fallbackChannel ||
+            String(
+                workflow.fallbackChannel
+            ).toLowerCase() ===
+            String(
+                workflow.channel
+            ).toLowerCase()
+        ) {
+            throw primaryError;
+        }
+
+        const sent =
+            await messageService.sendMessage({
+                ...message,
+                channel:
+                    workflow.fallbackChannel
+            });
+
+        return {
+            workflowId:
+                workflow._id,
+
+            logId:
+                sent.log?._id,
+
+            channel:
+                workflow.fallbackChannel,
+
+            fallbackUsed: true,
+
+            primaryError:
+                primaryError.message
+        };
     }
 };
+
+exports.fetchRecord = fetchRecord;
