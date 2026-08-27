@@ -1,143 +1,77 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-
     <title>Workflow Configuration</title>
-
     <link rel="stylesheet" href="workflow.css">
-
 </head>
-
 <body>
 
 <h2>Workflow Configuration</h2>
 
 <div class="form-group">
-
-<label>Workflow Name</label>
-
-<input
-    type="text"
-    id="workflowName"
-    placeholder="Example : Lead Created">
-
+    <label>Workflow Name</label>
+    <input type="text" id="workflowName" placeholder="Example: Lead Created">
 </div>
 
 <div class="form-group">
-
-<label>Module</label>
-
-<select id="module">
-
-<option value="Leads">Leads</option>
-
-<option value="Contacts">Contacts</option>
-
-<option value="Deals">Deals</option>
-
-</select>
-
+    <label>Module</label>
+    <select id="module"></select>
 </div>
 
 <div class="form-group">
-
-<label>Trigger</label>
-
-<select id="trigger">
-
-<option value="create">Create</option>
-
-<option value="edit">Edit</option>
-
-<option value="delete">Delete</option>
-
-</select>
-
+    <label>Trigger</label>
+    <select id="trigger">
+        <option value="create">Create</option>
+        <option value="edit">Edit</option>
+    </select>
 </div>
 
 <div class="form-group">
-
-<label>Channel</label>
-
-<select id="channel">
-
-<option value="whatsapp">WhatsApp</option>
-
-<option value="sms">SMS</option>
-
-<option value="email">Email</option>
-
-<option value="voice">Voice</option>
-
-<option value="rcs">RCS</option>
-
-</select>
-
+    <label>Channel</label>
+    <select id="channel">
+        <option value="whatsapp">WhatsApp</option>
+        <option value="sms">SMS</option>
+        <option value="email">Email</option>
+        <option value="voice">Voice</option>
+        <option value="rcs">RCS</option>
+    </select>
 </div>
 
 <div class="form-group">
-
-<label>Fallback Channel (optional)</label>
-
-<select id="fallbackChannel">
-
-<option value="">No fallback</option>
-
-<option value="sms">SMS</option>
-
-<option value="email">Email</option>
-
-</select>
-
+    <label>Fallback Channel (optional)</label>
+    <select id="fallbackChannel">
+        <option value="">No fallback</option>
+        <option value="sms">SMS</option>
+        <option value="email">Email</option>
+        <option value="voice">Voice</option>
+        <option value="rcs">RCS</option>
+    </select>
 </div>
 
 <div class="form-group">
-
-<label>Template</label>
-
-<select id="templateSelect"></select>
-
+    <label>Template</label>
+    <select id="templateSelect"></select>
 </div>
 
 <h3>Recipient Field</h3>
-
-<select id="recipientField">
-
-<option value="Mobile">Mobile</option>
-
-<option value="Phone">Phone</option>
-
-<option value="Email">Email</option>
-
-</select>
+<select id="recipientField"></select>
 
 <hr>
 
 <h3>Variable Mapping</h3>
-
 <div id="variablesContainer"></div>
 
 <br>
-
-<button id="saveBtn">
-
-Save Workflow
-
-</button>
-
+<button id="saveBtn">Save Workflow</button>
 <div id="status"></div>
 
 <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
-
 <script src="../common/auth.js"></script>
 <script src="../common/api.js"></script>
 <script src="../common/template.js"></script>
 <script src="../common/variables.js"></script>
 <script src="../common/preview.js"></script>
-
 <script src="workflow.js"></script>
 
 </body>
-
 </html>
