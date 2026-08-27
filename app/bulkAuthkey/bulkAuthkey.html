@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Send Data to Authkey</title>
+    <link rel="stylesheet" href="bulkAuthkey.css">
+</head>
+<body>
+    <h3>Send Data to Authkey</h3>
+
+    <div class="info">
+        <div><strong>Module:</strong> <span id="moduleName">Loading...</span></div>
+        <div><strong>Records:</strong> <span id="recordCount">Will be calculated by server</span></div>
+    </div>
+
+    <button id="syncBtn" type="button" disabled>
+        Send Data to Authkey
+    </button>
+
+    <p id="status" role="status"></p>
+
+    <div id="summary" hidden>
+        <div><strong>Total:</strong> <span id="total">0</span></div>
+        <div><strong>Sent:</strong> <span id="sent">0</span></div>
+        <div><strong>Skipped:</strong> <span id="skipped">0</span></div>
+        <div><strong>Failed:</strong> <span id="failed">0</span></div>
+    </div>
+
+    <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+    <script src="../common/auth.js"></script>
+    <script src="../common/api.js"></script>
+    <script src="bulkAuthkey.js"></script>
+</body>
+</html>
