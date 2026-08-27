@@ -1,7 +1,7 @@
 const axios = require("axios");
 const crypto = require("crypto");
 
-const Authkey = require("../models/Authkey");
+const ZohoConnection = require("../models/ZohoConnection");
 
 const CLIENT_ID = process.env.ZOHO_CLIENT_ID;
 const CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
@@ -22,22 +22,18 @@ function getAccountsUrl(apiDomain) {
     return "https://accounts.zoho.com";
 }
 
-function createState(organizationId) {
+function createState(organizationId, apiDomain) {
     const payload = {
         organizationId: String(organizationId),
         redirectUri: REDIRECT_URI,
+        apiDomain: apiDomain || process.env.ZOHO_ACCOUNTS_URL || "https://accounts.zoho.in",
         issuedAt: Date.now()
     };
 
-    const encoded = Buffer.from(
-        JSON.stringify(payload)
-    ).toString("base64url");
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
 
     const signature = crypto
-        .createHmac(
-            "sha256",
-            process.env.WEBHOOK_SECRET || CLIENT_SECRET
-        )
+        .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
         .update(encoded)
         .digest("base64url");
 
@@ -45,53 +41,34 @@ function createState(organizationId) {
 }
 
 function getOrganizationFromState(state) {
-    if (!state) {
-        throw new Error("Zoho OAuth state is required.");
-    }
+    if (!state) throw new Error("Zoho OAuth state is required.");
 
     const parts = String(state).split(".");
-
-    if (parts.length !== 2) {
-        throw new Error("Invalid Zoho OAuth state.");
-    }
+    if (parts.length !== 2) throw new Error("Invalid Zoho OAuth state.");
 
     const [encoded, signature] = parts;
 
     const expectedSignature = crypto
-        .createHmac(
-            "sha256",
-            process.env.WEBHOOK_SECRET || CLIENT_SECRET
-        )
+        .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
         .update(encoded)
         .digest("base64url");
 
     if (
         signature.length !== expectedSignature.length ||
-        !crypto.timingSafeEqual(
-            Buffer.from(signature),
-            Buffer.from(expectedSignature)
-        )
+        !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
     ) {
         throw new Error("Invalid Zoho OAuth state.");
     }
 
-    return JSON.parse(
-        Buffer.from(encoded, "base64url").toString("utf8")
-    );
+    return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
 }
 
 function createAuthorizationUrl(organizationId, apiDomain) {
-    if (!CLIENT_ID) {
-        throw new Error("ZOHO_CLIENT_ID is not configured.");
-    }
+    if (!CLIENT_ID) throw new Error("ZOHO_CLIENT_ID is not configured.");
+    if (!REDIRECT_URI) throw new Error("ZOHO_REDIRECT_URI is not configured.");
+    if (!SCOPES) throw new Error("ZOHO_SCOPES is not configured.");
 
-    if (!REDIRECT_URI) {
-        throw new Error("ZOHO_REDIRECT_URI is not configured.");
-    }
-
-    if (!SCOPES) {
-        throw new Error("ZOHO_SCOPES is not configured.");
-    }
+    const accountsUrl = getAccountsUrl(apiDomain);
 
     const params = new URLSearchParams({
         response_type: "code",
@@ -100,20 +77,14 @@ function createAuthorizationUrl(organizationId, apiDomain) {
         redirect_uri: REDIRECT_URI,
         access_type: "offline",
         prompt: "consent",
-        state: createState(organizationId)
+        state: createState(organizationId, apiDomain)
     });
 
-    return `${getAccountsUrl(apiDomain)}/oauth/v2/auth?${params.toString()}`;
+    return `${accountsUrl}/oauth/v2/auth?${params.toString()}`;
 }
 
-async function exchangeCode(
-    code,
-    redirectUri = REDIRECT_URI,
-    apiDomain
-) {
-    if (!code) {
-        throw new Error("Zoho authorization code is required.");
-    }
+async function exchangeCode(code, redirectUri = REDIRECT_URI, apiDomain) {
+    if (!code) throw new Error("Zoho authorization code is required.");
 
     const response = await axios.post(
         `${getAccountsUrl(apiDomain)}/oauth/v2/token`,
@@ -132,60 +103,50 @@ async function exchangeCode(
     return response.data;
 }
 
-async function saveRefreshToken({
-    organizationId,
-    refreshToken,
-    apiDomain,
-    scope
-}) {
-    if (!organizationId) {
-        throw new Error("organizationId is required.");
-    }
+async function saveRefreshToken({ organizationId, refreshToken, apiDomain, scope }) {
+    if (!organizationId) throw new Error("organizationId is required.");
+    if (!refreshToken) throw new Error("refreshToken is required.");
 
-    if (!refreshToken) {
-        throw new Error("refreshToken is required.");
-    }
-
-    const existing = await Authkey.findOne({ organizationId });
-
-    if (!existing) {
-        throw new Error(
-            `Authkey configuration not found for organization ${organizationId}.`
-        );
-    }
-
-    existing.zohoRefreshToken = refreshToken;
-    existing.zohoApiDomain = apiDomain || "https://www.zohoapis.com";
-    existing.zohoScope = scope || "";
-
-    await existing.save();
-    return existing;
+    return ZohoConnection.findOneAndUpdate(
+        { organizationId: String(organizationId) },
+        {
+            organizationId: String(organizationId),
+            refreshToken,
+            apiDomain: apiDomain || "https://www.zohoapis.in",
+            scope: scope || "",
+            connectedAt: new Date()
+        },
+        {
+            new: true,
+            upsert: true,
+            setDefaultsOnInsert: true
+        }
+    );
 }
 
 async function getAccessToken(organizationId) {
-    const credentials = await Authkey.findOne({ organizationId }).select(
-        "+zohoRefreshToken"
-    );
+    const connection = await ZohoConnection.findOne({
+        organizationId: String(organizationId)
+    }).select("+refreshToken");
 
-    if (!credentials) {
-        throw new Error("Organization is not configured.");
-    }
-
-    if (!credentials.zohoRefreshToken) {
+    if (!connection) {
         throw new Error(
-            "Zoho CRM is not connected for this organization."
+            "Zoho CRM is not connected for this organization. Open the Zoho OAuth connect URL first."
         );
     }
 
-    const apiDomain =
-        credentials.zohoApiDomain || "https://www.zohoapis.com";
+    if (!connection.refreshToken) {
+        throw new Error("Zoho refresh token is missing for this organization.");
+    }
+
+    const apiDomain = connection.apiDomain || "https://www.zohoapis.in";
 
     const response = await axios.post(
         `${getAccountsUrl(apiDomain)}/oauth/v2/token`,
         null,
         {
             params: {
-                refresh_token: credentials.zohoRefreshToken,
+                refresh_token: connection.refreshToken,
                 client_id: CLIENT_ID,
                 client_secret: CLIENT_SECRET,
                 grant_type: "refresh_token"
