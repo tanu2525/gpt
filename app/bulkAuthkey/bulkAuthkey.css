@@ -1,0 +1,36 @@
+body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    color: #222;
+}
+
+h3 {
+    margin-top: 0;
+}
+
+.info {
+    margin-bottom: 18px;
+    line-height: 1.8;
+}
+
+button {
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#status {
+    margin-top: 14px;
+    white-space: pre-wrap;
+}
+
+#summary {
+    margin-top: 18px;
+    line-height: 1.8;
+}
