@@ -1,8 +1,30 @@
+const crypto = require("crypto");
+
 const workflowService = require("../Services/workflowService");
 const WorkflowConfig = require("../models/WorkflowConfig");
 const zohoOAuthService = require("../Services/zohoOAuthService");
 const zohoCrmService = require("../Services/zohoCrmService");
 const zohoAutomationService = require("../Services/zohoAutomationService");
+
+function generateWebhookSecret() {
+    return crypto.randomBytes(32).toString("hex");
+}
+
+function hashWebhookSecret(secret) {
+    return crypto.createHash("sha256").update(secret).digest("hex");
+}
+
+function verifyWebhookSecret(secret, expectedHash) {
+    if (!secret || !expectedHash) return false;
+
+    const receivedHash = hashWebhookSecret(secret);
+    const expectedBuffer = Buffer.from(expectedHash, "hex");
+    const receivedBuffer = Buffer.from(receivedHash, "hex");
+
+    if (expectedBuffer.length !== receivedBuffer.length) return false;
+
+    return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
 
 exports.getZohoOAuthUrl = async function(req, res) {
     try {
@@ -81,6 +103,21 @@ exports.saveWorkflow = async function(req, res) {
             });
         }
 
+        // Each workflow gets its own random secret. Only the SHA-256 hash is stored.
+        // Existing workflows without a hash are migrated automatically below.
+        const existingWorkflow = await WorkflowConfig.findOne({
+            organizationId,
+            workflowName: req.body.workflowName
+        }).select("+webhookSecretHash");
+
+        let webhookSecret = null;
+        let webhookSecretHash = existingWorkflow?.webhookSecretHash || null;
+
+        if (!webhookSecretHash) {
+            webhookSecret = generateWebhookSecret();
+            webhookSecretHash = hashWebhookSecret(webhookSecret);
+        }
+
         const workflow = await WorkflowConfig.findOneAndUpdate(
             { organizationId, workflowName: req.body.workflowName },
             {
@@ -88,38 +125,67 @@ exports.saveWorkflow = async function(req, res) {
                 organizationId,
                 trigger,
                 triggerType: trigger,
-                enabled: true
+                enabled: true,
+                webhookSecretHash
             },
             { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
         );
 
         let zohoSetup = null;
 
-        if (
-            req.body.autoConfigureZoho !== false &&
-            !workflow.zohoWebhookId &&
-            !workflow.zohoWorkflowRuleId
-        ) {
+        if (req.body.autoConfigureZoho !== false) {
             const tokenData = await zohoOAuthService.getAccessToken(organizationId);
 
-            zohoSetup = await zohoAutomationService.setupZohoAutomation({
-                accessToken: tokenData.accessToken,
-                apiDomain: tokenData.apiDomain,
-                workflow
-            });
+            if (!workflow.zohoWebhookId && !workflow.zohoWorkflowRuleId) {
+                // New automation: create the Zoho webhook using the per-workflow secret.
+                if (!webhookSecret) {
+                    webhookSecret = generateWebhookSecret();
+                    webhookSecretHash = hashWebhookSecret(webhookSecret);
+                    workflow.webhookSecretHash = webhookSecretHash;
+                    await workflow.save();
+                }
 
-            workflow.zohoApiDomain = tokenData.apiDomain;
-            workflow.zohoModuleId = zohoSetup.zohoModuleId;
-            workflow.zohoWebhookId = zohoSetup.zohoWebhookId;
-            workflow.zohoWorkflowRuleId = zohoSetup.zohoWorkflowRuleId;
-            workflow.webhookUrl = zohoSetup.webhookUrl;
-            await workflow.save();
+                zohoSetup = await zohoAutomationService.setupZohoAutomation({
+                    accessToken: tokenData.accessToken,
+                    apiDomain: tokenData.apiDomain,
+                    workflow,
+                    webhookSecret
+                });
+
+                workflow.zohoApiDomain = tokenData.apiDomain;
+                workflow.zohoModuleId = zohoSetup.zohoModuleId;
+                workflow.zohoWebhookId = zohoSetup.zohoWebhookId;
+                workflow.zohoWorkflowRuleId = zohoSetup.zohoWorkflowRuleId;
+                workflow.webhookUrl = zohoSetup.webhookUrl;
+                await workflow.save();
+            } else if (webhookSecret) {
+                // Migration path for an older workflow using the old global secret.
+                await zohoAutomationService.updateWebhookSecret({
+                    accessToken: tokenData.accessToken,
+                    apiDomain: tokenData.apiDomain,
+                    webhookId: workflow.zohoWebhookId,
+                    webhookSecret
+                });
+
+                workflow.zohoApiDomain = tokenData.apiDomain;
+                await workflow.save();
+
+                zohoSetup = {
+                    zohoModuleId: workflow.zohoModuleId,
+                    zohoWebhookId: workflow.zohoWebhookId,
+                    zohoWorkflowRuleId: workflow.zohoWorkflowRuleId,
+                    webhookUrl: workflow.webhookUrl
+                };
+            }
         }
+
+        const workflowResponse = workflow.toObject();
+        delete workflowResponse.webhookSecretHash;
 
         return res.status(201).json({
             success: true,
             workflowId: workflow._id,
-            workflow,
+            workflow: workflowResponse,
             zoho: zohoSetup
         });
     } catch (error) {
@@ -196,7 +262,30 @@ exports.zohoNotification = async function(req, res) {
 
 exports.triggerWorkflow = async function(req, res) {
     try {
-        const result = await workflowService.trigger(req.params.workflowId, req.body || {});
+        const workflow = await WorkflowConfig.findById(req.params.workflowId)
+            .select("+webhookSecretHash");
+
+        if (!workflow || !workflow.enabled) {
+            return res.status(404).json({
+                success: false,
+                message: "Workflow not found or disabled."
+            });
+        }
+
+        const receivedSecret = req.get("X-Workflow-Secret");
+
+        if (!verifyWebhookSecret(receivedSecret, workflow.webhookSecretHash)) {
+            return res.status(401).json({
+                success: false,
+                message: "Workflow webhook is not authorized."
+            });
+        }
+
+        const result = await workflowService.trigger(
+            workflow._id,
+            req.body || {}
+        );
+
         return res.json({ success: true, ...result });
     } catch (error) {
         return res.status(error.statusCode || error.response?.status || 500).json({
