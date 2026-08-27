@@ -78,6 +78,13 @@ const WorkflowConfigSchema = new mongoose.Schema(
             type: String
         },
 
+        // Hash of the unique secret used by Zoho for this workflow webhook.
+        // The raw secret is never stored in MongoDB.
+        webhookSecretHash: {
+            type: String,
+            select: false
+        },
+
         channel: {
             type: String,
             required: true
