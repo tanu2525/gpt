@@ -15,6 +15,7 @@ const workflowRoutes = require("./routes/workflow");
 const hubspotWorkflowRoutes = require("./routes/hubspotWorkflowRoutes");
 const zohoMetadataRoutes = require("./routes/zohoMetadata");
 const zohoWebhookRoutes = require("./routes/zohoWebhookRoutes");
+const zohoAuthkeyBulkRoutes = require("./routes/zohoAuthkeyBulk");
 
 // --------------------------------------------------
 // Database
@@ -91,6 +92,7 @@ app.use("/api/history", historyRoutes);
 app.use("/api/workflow", workflowRoutes);
 app.use("/api/zoho", zohoMetadataRoutes);
 app.use("/api/zoho/webhook", zohoWebhookRoutes);
+app.use("/api/zoho/authkey", zohoAuthkeyBulkRoutes);
 app.use("/api/hubspot/workflow", hubspotWorkflowRoutes);
 
 // --------------------------------------------------
