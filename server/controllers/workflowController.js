@@ -4,13 +4,9 @@ const workflowService =
 const WorkflowConfig =
     require("../models/WorkflowConfig");
 
-const zohoNotificationService =
-    require("../Services/zohoNotificationService");
 
-const zohoOAuthService =
-    require("../Services/zohoOAuthService");
-
-
+const zohoCrmService =
+    require("../Services/zohoCrmService");
 exports.getZohoOAuthUrl =
 async function(req, res) {
     try {
@@ -148,7 +144,7 @@ async function(req, res) {
         }
 
         const {
-            autoConfigureZoho = true,
+            autoConfigureZoho = false,
             ...workflowData
         } = req.body;
 
@@ -185,34 +181,7 @@ async function(req, res) {
 
         let zohoSetup = null;
 
-        if (autoConfigureZoho) {
-            const tokenData =
-                await zohoOAuthService.getAccessToken(
-                    organizationId
-                );
-
-            zohoSetup =
-                await zohoNotificationService
-                    .setupWorkflowNotification(
-                        workflow,
-                        tokenData.accessToken,
-                        tokenData.apiDomain
-                    );
-
-            workflow =
-                await WorkflowConfig.findByIdAndUpdate(
-                    workflow._id,
-                    {
-                        ...zohoSetup,
-                        triggerType:
-                            req.body.triggerType ||
-                            req.body.trigger
-                    },
-                    {
-                        new: true
-                    }
-                );
-        }
+      
 
         return res.status(201).json({
             success: true,
@@ -476,6 +445,104 @@ async function(req, res) {
     }
 };
 
+exports.getZohoModules = async function(req, res) {
+    try {
+        const accessToken =
+            req.headers.authorization?.replace(
+                "Bearer ",
+                ""
+            );
+
+        if (!accessToken) {
+            return res.status(401).json({
+                success: false,
+                message: "Zoho access token is required."
+            });
+        }
+
+        const result =
+            await zohoCrmService.getModules(
+                accessToken
+            );
+
+        return res.json({
+            success: true,
+            modules: result.modules || []
+        });
+
+    } catch (error) {
+        console.error(
+            "Get Zoho modules error:",
+            error.response?.data || error.message
+        );
+
+        return res.status(
+            error.response?.status || 500
+        ).json({
+            success: false,
+            message:
+                error.response?.data?.message ||
+                error.message
+        });
+    }
+};
+
+exports.getZohoFields = async function(req, res) {
+    try {
+        const {
+            organizationId,
+            module
+        } = req.query;
+
+        if (!organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "organizationId is required."
+            });
+        }
+
+        if (!module) {
+            return res.status(400).json({
+                success: false,
+                message: "module is required."
+            });
+        }
+
+        const tokenData =
+            await zohoOAuthService.getAccessToken(
+                organizationId
+            );
+
+        const fields =
+            await zohoCrmService.getFields(
+                tokenData.accessToken,
+                module
+            );
+
+        return res.json({
+            success: true,
+            module,
+            fields
+        });
+
+    } catch (error) {
+        console.error(
+            "Get Zoho fields error:",
+            error.response?.data || error.message
+        );
+
+        return res.status(
+            error.statusCode ||
+            error.response?.status ||
+            500
+        ).json({
+            success: false,
+            message:
+                error.response?.data?.message ||
+                error.message
+        });
+    }
+};
 //delete later
 exports.testOAuth = async (req, res) => {
     const organizationId = "4599126000000295996";

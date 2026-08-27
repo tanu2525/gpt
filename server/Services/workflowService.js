@@ -6,8 +6,7 @@ const messageService =
 const WorkflowConfig =
     require("../models/WorkflowConfig");
 
-const zohoOAuthService =
-    require("./zohoOAuthService");
+
 
 async function fetchRecord(
     recordId,
@@ -54,22 +53,19 @@ function getRecordId(payload) {
     );
 }
 
-async function resolveAccessToken(
-    organizationId,
-    accessToken
-) {
-   if (accessToken) {
+async function resolveAccessToken(organizationId, accessToken) {
+    if (!accessToken) {
+        throw new Error(
+            "Zoho OAuth access token is required."
+        );
+    }
+
     return {
         accessToken,
         apiDomain:
             process.env.ZOHO_API_DOMAIN ||
-            "https://sandbox.zohoapis.com"
+            "https://www.zohoapis.com"
     };
-}
-
-    return zohoOAuthService.getAccessToken(
-        organizationId
-    );
 }
 
 exports.send =
@@ -172,33 +168,7 @@ async function(workflowId, payload) {
             payload.operation || ""
         ).toLowerCase();
 
-    if (!recipient && recordId && operation !== "delete") {
-        const tokenData =
-            await zohoOAuthService.getAccessToken(
-                workflow.organizationId
-            );
-
-        const freshRecord =
-            await fetchRecord(
-                recordId,
-                workflow.module,
-                tokenData.accessToken,
-                tokenData.apiDomain
-            );
-
-        if (freshRecord) {
-            recipient =
-                freshRecord[
-                    workflow.recipientField
-                ];
-
-            Object.assign(
-                record,
-                freshRecord
-            );
-        }
-    }
-
+   
     if (!recipient) {
         const error =
             new Error(

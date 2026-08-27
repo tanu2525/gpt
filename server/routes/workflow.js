@@ -52,32 +52,14 @@ function verifyWorkflowSecret(
     next();
 }
 
-
-/*
- * Zoho OAuth
- */
 router.get(
-    "/zoho/oauth/url",
-    workflowController.getZohoOAuthUrl
+    "/zoho/modules",
+    workflowController.getZohoModules
 );
 
 router.get(
-    "/zoho/oauth/callback",
-    workflowController.zohoOAuthCallback
-);
-
-
-/*
- * Zoho CRM Notifications callback.
- *
- * Do NOT put verifyWorkflowSecret here because Zoho
- * cannot send our custom X-Workflow-Secret header.
- *
- * Zoho's callback token is validated inside the controller.
- */
-router.post(
-    "/zoho/notifications",
-    workflowController.zohoNotification
+    "/zoho/fields",
+    workflowController.getZohoFields
 );
 
 
@@ -100,9 +82,6 @@ router.post(
     workflowController.sendWorkflowMessage
 );
 
-router.get(
-    "/zoho/test",
-    workflowController.testOAuth
-);
+
 
 module.exports = router;
