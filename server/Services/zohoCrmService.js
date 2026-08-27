@@ -1,24 +1,34 @@
 const axios = require("axios");
 
-const ZOHO_CRM_BASE_URL =
+const DEFAULT_CRM_BASE_URL =
     process.env.ZOHO_CRM_BASE_URL ||
     "https://www.zohoapis.com/crm/v8";
+
+function normalizeApiDomain(apiDomain) {
+    return String(apiDomain || "").replace(/\/$/, "");
+}
 
 async function zohoRequest({
     accessToken,
     method = "GET",
     url,
     params,
-    data
+    data,
+    apiDomain
 }) {
     if (!accessToken) {
         throw new Error("Zoho OAuth access token is required");
     }
 
+    const baseUrl =
+        `${normalizeApiDomain(apiDomain) || DEFAULT_CRM_BASE_URL}`
+            .replace(/\/crm\/v\d+$/i, "")
+            .replace(/\/$/, "") + "/crm/v8";
+
     try {
         const response = await axios({
             method,
-            url: `${ZOHO_CRM_BASE_URL}${url}`,
+            url: `${baseUrl}${url}`,
             params,
             data,
             headers: {
@@ -42,53 +52,34 @@ async function zohoRequest({
     }
 }
 
-
-/*
- * Get all CRM modules
- */
-async function getModules(accessToken) {
-    const response = await zohoRequest({
+async function getModules(accessToken, apiDomain) {
+    return zohoRequest({
         accessToken,
         method: "GET",
-        url: "/settings/modules"
+        url: "/settings/modules",
+        apiDomain
     });
-
-    return response.modules || [];
 }
 
-
-/*
- * Get a single module
- */
 async function getModule(
     accessToken,
-    moduleApiName
+    moduleApiName,
+    apiDomain
 ) {
     const response = await zohoRequest({
         accessToken,
         method: "GET",
-        url: `/settings/modules/${encodeURIComponent(moduleApiName)}`
+        url: `/settings/modules/${encodeURIComponent(moduleApiName)}`,
+        apiDomain
     });
 
     return response.modules?.[0] || null;
 }
 
-
-/*
- * Get fields of a module.
- *
- * This is important for our workflow system because
- * every Zoho module can have different recipient fields.
- *
- * Example:
- * Leads      -> Mobile / Phone / Email
- * Contacts   -> Mobile / Phone / Email
- * Deals      -> Contact_Name
- * Accounts   -> Phone / Email
- */
 async function getFields(
     accessToken,
-    moduleApiName
+    moduleApiName,
+    apiDomain
 ) {
     const response = await zohoRequest({
         accessToken,
@@ -96,19 +87,17 @@ async function getFields(
         url: "/settings/fields",
         params: {
             module: moduleApiName
-        }
+        },
+        apiDomain
     });
 
     return response.fields || [];
 }
 
-
-/*
- * Get workflow configuration metadata.
- */
 async function getWorkflowConfiguration(
     accessToken,
-    moduleApiName
+    moduleApiName,
+    apiDomain
 ) {
     return zohoRequest({
         accessToken,
@@ -116,38 +105,31 @@ async function getWorkflowConfiguration(
         url: "/workflow_configurations",
         params: {
             module: moduleApiName
-        }
+        },
+        apiDomain
     });
 }
 
-
-/*
- * Get a Zoho CRM record.
- *
- * Used by workflow execution when Zoho webhook
- * provides only the record ID.
- */
 async function getRecord(
     accessToken,
     moduleApiName,
-    recordId
+    recordId,
+    apiDomain
 ) {
     if (!recordId) {
-        throw new Error(
-            "Zoho record ID is required"
-        );
+        throw new Error("Zoho record ID is required");
     }
 
     const response = await zohoRequest({
         accessToken,
         method: "GET",
         url:
-            `/${encodeURIComponent(moduleApiName)}/${encodeURIComponent(recordId)}`
+            `/${encodeURIComponent(moduleApiName)}/${encodeURIComponent(recordId)}`,
+        apiDomain
     });
 
     return response.data?.[0] || null;
 }
-
 
 module.exports = {
     zohoRequest,
