@@ -2,6 +2,7 @@ const axios = require("axios");
 const messageService = require("./messageService");
 const WorkflowConfig = require("../models/WorkflowConfig");
 const zohoOAuthService = require("./zohoOAuthService");
+const zohoCrmService = require("./zohoCrmService");
 
 function getRecordId(payload = {}) {
     return (
@@ -45,6 +46,69 @@ async function resolveAccessToken(organizationId, accessToken) {
     return zohoOAuthService.getAccessToken(String(organizationId));
 }
 
+function getLookupModule(field) {
+    return (
+        field?.lookup?.module?.api_name ||
+        field?.lookup?.module?.apiName ||
+        field?.lookup?.module ||
+        field?.associated_module?.module?.api_name ||
+        field?.associated_module?.module ||
+        field?.connected_details?.module?.api_name ||
+        field?.connected_details?.module
+    );
+}
+
+async function resolveRecipient({
+    record,
+    recipientField,
+    channel,
+    accessToken,
+    apiDomain,
+    module
+}) {
+    const value = record?.[recipientField];
+
+    if (typeof value === "string" || typeof value === "number") {
+        return String(value);
+    }
+
+    if (!value || typeof value !== "object" || !value.id) {
+        return null;
+    }
+
+    // Lookup field, e.g. Deals.Contact_Name.
+    const fields = await zohoCrmService.getFields(
+        accessToken,
+        module,
+        apiDomain
+    );
+
+    const metadata = fields.find(
+        field => field.api_name === recipientField
+    );
+
+    const relatedModule = getLookupModule(metadata);
+
+    if (!relatedModule) {
+        return null;
+    }
+
+    const relatedRecord = await fetchRecord(
+        value.id,
+        relatedModule,
+        accessToken,
+        apiDomain
+    );
+
+    if (!relatedRecord) {
+        return null;
+    }
+
+    return String(channel).toLowerCase() === "email"
+        ? relatedRecord.Email
+        : relatedRecord.Mobile || relatedRecord.Phone;
+}
+
 exports.send = async function(data) {
     const {
         organizationId,
@@ -69,10 +133,14 @@ exports.send = async function(data) {
         throw new Error(`Zoho record ${recordId} was not found.`);
     }
 
-    const recipient =
-        String(channel).toLowerCase() === "email"
-            ? record.Email
-            : record.Mobile || record.Phone;
+    const recipient = await resolveRecipient({
+        record,
+        recipientField: String(channel).toLowerCase() === "email" ? "Email" : "Mobile",
+        channel,
+        accessToken: tokenData.accessToken,
+        apiDomain: tokenData.apiDomain,
+        module
+    }) || record.Mobile || record.Phone || record.Email;
 
     if (!recipient) {
         throw new Error(`No recipient was found in the Zoho ${module} record.`);
@@ -105,8 +173,6 @@ exports.trigger = async function(workflowId, payload = {}) {
     const recordId = getRecordId(payload);
     const tokenData = await resolveAccessToken(workflow.organizationId);
 
-    // Zoho workflow webhooks may send only the record ID.
-    // Always fetch the current record before resolving recipient/variables.
     const record = await fetchRecord(
         recordId,
         workflow.module,
@@ -120,13 +186,18 @@ exports.trigger = async function(workflowId, payload = {}) {
         );
     }
 
-    const recipient =
-        record[workflow.recipientField] ??
-        payload.recipient;
+    const recipient = await resolveRecipient({
+        record,
+        recipientField: workflow.recipientField,
+        channel: workflow.channel,
+        accessToken: tokenData.accessToken,
+        apiDomain: tokenData.apiDomain,
+        module: workflow.module
+    }) || payload.recipient;
 
     if (!recipient) {
         const error = new Error(
-            `The workflow could not find ${workflow.recipientField} for Zoho ${workflow.module} record ${recordId}.`
+            `The workflow could not resolve ${workflow.recipientField} for Zoho ${workflow.module} record ${recordId}.`
         );
         error.statusCode = 400;
         throw error;
