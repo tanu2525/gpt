@@ -9,18 +9,39 @@ async function loadSettings() {
 }
 
 async function saveAuthkey() {
-    const authkey = document.getElementById("authkey").value.trim();
-    if (!authkey) { setStatus("Enter an Authkey to save or rotate it.", "status"); return; }
-    setStatus("Saving...", "status");
-    await requestJson("/api/authkey/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId: await getOrganizationId(), authkey })
-    });
-    setStatus("Credentials saved securely.", "status");
-    document.getElementById("authkey").value = "";
+    const input = document.getElementById("authkey");
+    const authkey = input.value.trim();
+
+    if (!authkey) {
+        setStatus("Enter an Authkey to save or rotate it.", "status");
+        return;
+    }
+
+    setStatus("Validating Authkey...", "status");
+
+    try {
+        const response = await requestJson("/api/authkey/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                organizationId: await getOrganizationId(),
+                authkey
+            })
+        });
+
+        setStatus(response.message || "Authkey saved successfully.", "status");
+        input.value = "";
+    } catch (error) {
+        if (/INVALID_AUTHKEY|Invalid Authkey/i.test(`${error.code || ""} ${error.message || ""}`)) {
+            setStatus("Invalid Authkey. Please enter a valid Authkey.", "status");
+            input.focus();
+            return;
+        }
+
+        setStatus(error.message || "Unable to save Authkey.", "status");
+    }
 }
 
 ZOHO.embeddedApp.on("PageLoad", () => loadSettings().catch(error => setStatus(error.message, "status")));
-document.getElementById("saveBtn").addEventListener("click", () => saveAuthkey().catch(error => setStatus(error.message, "status")));
+document.getElementById("saveBtn").addEventListener("click", saveAuthkey);
 ZOHO.embeddedApp.init();
