@@ -6,51 +6,43 @@ const workflowController =
 
 const crypto = require("crypto");
 
-function verifyWorkflowSecret(
-    req,
-    res,
-    next
-) {
-    const expected =
-        process.env.WORKFLOW_WEBHOOK_SECRET;
+function verifyWorkflowSecret(req, res, next) {
+    const expected = process.env.WORKFLOW_WEBHOOK_SECRET;
+    const received = req.get("X-Workflow-Secret");
 
-    const received =
-        req.get("X-Workflow-Secret");
-
-    if (
-        !expected ||
-        !received
-    ) {
+    if (!expected || !received) {
         return res.status(401).json({
             success: false,
-            message:
-                "Workflow webhook is not authorized."
+            message: "Workflow webhook is not authorized."
         });
     }
 
-    const expectedBuffer =
-        Buffer.from(expected);
-
-    const receivedBuffer =
-        Buffer.from(received);
+    const expectedBuffer = Buffer.from(expected);
+    const receivedBuffer = Buffer.from(received);
 
     if (
-        expectedBuffer.length !==
-            receivedBuffer.length ||
-        !crypto.timingSafeEqual(
-            expectedBuffer,
-            receivedBuffer
-        )
+        expectedBuffer.length !== receivedBuffer.length ||
+        !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)
     ) {
         return res.status(401).json({
             success: false,
-            message:
-                "Workflow webhook is not authorized."
+            message: "Workflow webhook is not authorized."
         });
     }
 
     next();
 }
+
+// Zoho OAuth
+router.get(
+    "/zoho/oauth",
+    workflowController.getZohoOAuthUrl
+);
+
+router.get(
+    "/zoho/oauth/callback",
+    workflowController.zohoOAuthCallback
+);
 
 router.get(
     "/zoho/modules",
@@ -62,10 +54,6 @@ router.get(
     workflowController.getZohoFields
 );
 
-
-/*
- * Existing workflow endpoints
- */
 router.post(
     "/save",
     workflowController.saveWorkflow
@@ -81,7 +69,5 @@ router.post(
     "/send",
     workflowController.sendWorkflowMessage
 );
-
-
 
 module.exports = router;
