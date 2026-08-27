@@ -38,7 +38,7 @@ async function loadModuleFields() {
 
     moduleFields = result.fields || [];
     populateRecipientFields();
-    await renderMappings();
+    await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
 }
 
 function populateRecipientFields() {
@@ -124,11 +124,11 @@ async function saveWorkflow() {
     }
 }
 
-async function renderMappings() {
+async function renderMappings(body = "") {
     const container = document.getElementById("variablesContainer");
     container.innerHTML = "";
 
-    const variables = getTemplateVariables({});
+    const variables = getTemplateVariables(body);
 
     variables.forEach(variable => {
         const div = document.createElement("div");
