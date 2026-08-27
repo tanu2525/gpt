@@ -55,7 +55,26 @@ function buildWebhookFields(workflow) {
     return [...fields];
 }
 
-async function createWebhook({ accessToken, workflow, module, apiDomain }) {
+function buildSecretHeader(webhookSecret) {
+    if (!webhookSecret) {
+        throw new Error("Workflow webhook secret is required.");
+    }
+
+    return {
+        custom_parameters: [{
+            name: "X-Workflow-Secret",
+            value: webhookSecret
+        }]
+    };
+}
+
+async function createWebhook({
+    accessToken,
+    workflow,
+    module,
+    apiDomain,
+    webhookSecret
+}) {
     const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
 
     if (!webhookBaseUrl) {
@@ -82,12 +101,7 @@ async function createWebhook({ accessToken, workflow, module, apiDomain }) {
             url: webhookUrl,
             http_method: "POST",
             authentication: { type: "general" },
-            headers: {
-                custom_parameters: [{
-                    name: "X-Workflow-Secret",
-                    value: process.env.WORKFLOW_WEBHOOK_SECRET
-                }]
-            },
+            headers: buildSecretHeader(webhookSecret),
             body: {
                 raw_data_content: JSON.stringify(bodyObject),
                 format: "JSON",
@@ -112,6 +126,36 @@ async function createWebhook({ accessToken, workflow, module, apiDomain }) {
         id: webhook.details.id,
         url: webhookUrl
     };
+}
+
+async function updateWebhookSecret({
+    accessToken,
+    webhookId,
+    webhookSecret,
+    apiDomain
+}) {
+    if (!webhookId) {
+        throw new Error("Zoho webhook ID is required.");
+    }
+
+    const response = await axios.put(
+        `${getBaseUrl(apiDomain)}/settings/automation/webhooks/${webhookId}`,
+        {
+            webhooks: [{
+                http_method: "POST",
+                headers: buildSecretHeader(webhookSecret)
+            }]
+        },
+        { headers: getHeaders(accessToken) }
+    );
+
+    const webhook = response.data.webhooks?.[0];
+
+    if (webhook?.status && webhook.status !== "success") {
+        throw new Error(webhook.message || "Zoho webhook secret was not updated.");
+    }
+
+    return webhookId;
 }
 
 async function createWorkflowRule({ accessToken, workflow, module, webhookId, apiDomain }) {
@@ -169,7 +213,12 @@ async function createWorkflowRule({ accessToken, workflow, module, webhookId, ap
     return rule.details.id;
 }
 
-async function setupZohoAutomation({ accessToken, workflow, apiDomain }) {
+async function setupZohoAutomation({
+    accessToken,
+    workflow,
+    apiDomain,
+    webhookSecret
+}) {
     const module = await findModule(accessToken, workflow.module, apiDomain);
 
     if (["Notes", "Calls"].includes(module.api_name)) {
@@ -184,7 +233,8 @@ async function setupZohoAutomation({ accessToken, workflow, apiDomain }) {
         accessToken,
         workflow,
         module,
-        apiDomain
+        apiDomain,
+        webhookSecret
     });
 
     try {
@@ -223,6 +273,7 @@ module.exports = {
     getModules,
     findModule,
     createWebhook,
+    updateWebhookSecret,
     createWorkflowRule,
     setupZohoAutomation
 };
