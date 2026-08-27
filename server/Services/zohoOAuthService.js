@@ -1,6 +1,5 @@
 const axios = require("axios");
 const crypto = require("crypto");
-
 const ZohoConnection = require("../models/ZohoConnection");
 
 const CLIENT_ID = process.env.ZOHO_CLIENT_ID;
@@ -18,20 +17,36 @@ function getAccountsUrl(apiDomain) {
     if (domain.includes("zoho.jp")) return "https://accounts.zoho.jp";
     if (domain.includes("zoho.sg")) return "https://accounts.zoho.sg";
     if (domain.includes("zoho.in")) return "https://accounts.zoho.in";
-
     return "https://accounts.zoho.com";
+}
+
+function getCrmApiDomain(apiDomain) {
+    const domain = String(apiDomain || "").toLowerCase();
+
+    if (domain.includes("zoho.eu")) return "https://www.zohoapis.eu";
+    if (domain.includes("zoho.com.au")) return "https://www.zohoapis.com.au";
+    if (domain.includes("zoho.jp")) return "https://www.zohoapis.jp";
+    if (domain.includes("zoho.sg")) return "https://www.zohoapis.sg";
+    if (domain.includes("zoho.in")) return "https://www.zohoapis.in";
+    if (domain.includes("zohoapis.eu")) return "https://www.zohoapis.eu";
+    if (domain.includes("zohoapis.com.au")) return "https://www.zohoapis.com.au";
+    if (domain.includes("zohoapis.jp")) return "https://www.zohoapis.jp";
+    if (domain.includes("zohoapis.sg")) return "https://www.zohoapis.sg";
+    if (domain.includes("zohoapis.in")) return "https://www.zohoapis.in";
+
+    return "https://www.zohoapis.com";
 }
 
 function createState(organizationId, apiDomain) {
     const payload = {
         organizationId: String(organizationId),
         redirectUri: REDIRECT_URI,
-        apiDomain: apiDomain || process.env.ZOHO_ACCOUNTS_URL || "https://accounts.zoho.in",
+        accountsDomain: getAccountsUrl(apiDomain),
+        crmApiDomain: getCrmApiDomain(apiDomain),
         issuedAt: Date.now()
     };
 
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-
     const signature = crypto
         .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
         .update(encoded)
@@ -47,7 +62,6 @@ function getOrganizationFromState(state) {
     if (parts.length !== 2) throw new Error("Invalid Zoho OAuth state.");
 
     const [encoded, signature] = parts;
-
     const expectedSignature = crypto
         .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
         .update(encoded)
@@ -112,15 +126,11 @@ async function saveRefreshToken({ organizationId, refreshToken, apiDomain, scope
         {
             organizationId: String(organizationId),
             refreshToken,
-            apiDomain: apiDomain || "https://www.zohoapis.in",
+            apiDomain: getCrmApiDomain(apiDomain),
             scope: scope || "",
             connectedAt: new Date()
         },
-        {
-            new: true,
-            upsert: true,
-            setDefaultsOnInsert: true
-        }
+        { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 }
 
@@ -139,7 +149,7 @@ async function getAccessToken(organizationId) {
         throw new Error("Zoho refresh token is missing for this organization.");
     }
 
-    const apiDomain = connection.apiDomain || "https://www.zohoapis.in";
+    const apiDomain = getCrmApiDomain(connection.apiDomain);
 
     const response = await axios.post(
         `${getAccountsUrl(apiDomain)}/oauth/v2/token`,
@@ -165,5 +175,6 @@ module.exports = {
     getOrganizationFromState,
     exchangeCode,
     saveRefreshToken,
-    getAccessToken
+    getAccessToken,
+    getCrmApiDomain
 };
