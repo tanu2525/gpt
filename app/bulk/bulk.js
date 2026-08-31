@@ -48,6 +48,33 @@ async function sendBulkMessages() {
     });
 
     renderProgress(result);
+    resetBulkForm();
+}
+
+function resetBulkForm() {
+    const channel = document.getElementById("channel");
+    const templateSelect = document.getElementById("templateSelect");
+
+    if (channel) {
+        channel.selectedIndex = 0;
+    }
+
+    if (templateSelect) {
+        templateSelect.innerHTML = "";
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "Select Template";
+        templateSelect.appendChild(option);
+    }
+
+    // Clear variable mapping controls without reloading the Zoho widget.
+    ["variablesContainer", "variableMapping", "variables", "templateVariables"].forEach(id => {
+        const container = document.getElementById(id);
+        if (container) container.replaceChildren();
+    });
+
+    const preview = document.getElementById("templatePreview");
+    if (preview) preview.value = "";
 }
 
 function renderLeadList() {
