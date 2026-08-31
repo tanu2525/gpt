@@ -68,7 +68,38 @@ async function sendMessage() {
     });
 
     await createDeliveryNote(channel, recipient, templateId, result);
+
+    // Clear the form after a successful send so the next message starts fresh.
+    resetMessageForm();
     setStatus("Message submitted successfully.");
+}
+
+function resetMessageForm() {
+    const channel = document.getElementById("channel");
+    const templateSelect = document.getElementById("templateSelect");
+
+    if (channel) {
+        channel.selectedIndex = 0;
+    }
+
+    if (templateSelect) {
+        templateSelect.innerHTML = "";
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "Select Template";
+        templateSelect.appendChild(option);
+    }
+
+    // previewTemplate/loadTemplates may render variable controls in one of these containers.
+    ["variablesContainer", "variableMapping", "variables", "templateVariables"].forEach(id => {
+        const container = document.getElementById(id);
+        if (container) container.replaceChildren();
+    });
+
+    const preview = document.getElementById("templatePreview");
+    if (preview) preview.value = "";
+
+    updateRecipientLabel();
 }
 
 async function createDeliveryNote(channel, recipient, templateId, response) {
