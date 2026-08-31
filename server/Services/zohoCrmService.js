@@ -53,12 +53,14 @@ async function zohoRequest({
 }
 
 async function getModules(accessToken, apiDomain) {
-    return zohoRequest({
+    const response = await zohoRequest({
         accessToken,
         method: "GET",
         url: "/settings/modules",
         apiDomain
     });
+
+    return response.modules || [];
 }
 
 async function getModule(
