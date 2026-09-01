@@ -17,10 +17,20 @@ function isAuthkeyMissingError(error) {
 
 async function openAuthkeySettings() {
     try {
-        // WebTab1 is the Zoho CRM API name visible in the CRM URL:
-        // /crm/tab/WebTab1
-        await ZOHO.CRM.UI.WebTab.open({
-            Entity: "WebTab1"
+        /*
+         * In the Zoho Embedded App SDK used by this extension, WebTab is
+         * not available under ZOHO.CRM.UI. The supported API for opening a
+         * Web Tab widget is ZOHO.CRM.UI.Widget.open().
+         *
+         * The widget Entity name follows the Zoho Web Tab convention:
+         * WebTab1_Widget.
+         */
+        if (!ZOHO?.CRM?.UI?.Widget?.open) {
+            throw new Error("Zoho Widget.open API is not available in this context.");
+        }
+
+        await ZOHO.CRM.UI.Widget.open({
+            Entity: "WebTab1_Widget"
         });
     } catch (error) {
         console.error("Unable to open Authkey Settings Web Tab:", error);
