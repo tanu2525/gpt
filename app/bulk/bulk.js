@@ -3,10 +3,12 @@ let selectedLeads = [];
 let crmFields = [];
 
 ZOHO.embeddedApp.on("PageLoad", async data => {
-    selectedIds = Array.isArray(data.EntityId) ? data.EntityId : (data.EntityId ? [data.EntityId] : []);
-    setLeadCount(selectedIds.length);
-
     try {
+        if (!(await ensureAuthkeyConfigured())) return;
+
+        selectedIds = Array.isArray(data.EntityId) ? data.EntityId : (data.EntityId ? [data.EntityId] : []);
+        setLeadCount(selectedIds.length);
+
         crmFields = await getCrmFields();
         selectedLeads = await getCrmRecords(selectedIds);
         await refreshTemplates();
@@ -55,9 +57,7 @@ async function resetBulkForm() {
     const channel = document.getElementById("channel");
     const templateSelect = document.getElementById("templateSelect");
 
-    if (channel) {
-        channel.selectedIndex = 0;
-    }
+    if (channel) channel.selectedIndex = 0;
 
     if (templateSelect) {
         templateSelect.innerHTML = "";
@@ -75,8 +75,6 @@ async function resetBulkForm() {
     const preview = document.getElementById("templatePreview");
     if (preview) preview.value = "";
 
-    // Reload templates for the default channel so the next bulk send can
-    // start immediately without manually changing the channel.
     await refreshTemplates();
     renderLeadList();
     updateSummary();
