@@ -48,10 +48,10 @@ async function sendBulkMessages() {
     });
 
     renderProgress(result);
-    resetBulkForm();
+    await resetBulkForm();
 }
 
-function resetBulkForm() {
+async function resetBulkForm() {
     const channel = document.getElementById("channel");
     const templateSelect = document.getElementById("templateSelect");
 
@@ -67,7 +67,6 @@ function resetBulkForm() {
         templateSelect.appendChild(option);
     }
 
-    // Clear variable mapping controls without reloading the Zoho widget.
     ["variablesContainer", "variableMapping", "variables", "templateVariables"].forEach(id => {
         const container = document.getElementById(id);
         if (container) container.replaceChildren();
@@ -75,6 +74,12 @@ function resetBulkForm() {
 
     const preview = document.getElementById("templatePreview");
     if (preview) preview.value = "";
+
+    // Reload templates for the default channel so the next bulk send can
+    // start immediately without manually changing the channel.
+    await refreshTemplates();
+    renderLeadList();
+    updateSummary();
 }
 
 function renderLeadList() {
