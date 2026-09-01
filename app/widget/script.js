@@ -4,15 +4,17 @@ let record = null;
 let crmFields = [];
 
 ZOHO.embeddedApp.on("PageLoad", async data => {
-    recordId = Array.isArray(data.EntityId) ? data.EntityId[0] : (data.EntityId || data.RecordID || data.RecordId || data.recordId);
-    moduleName = data.Entity || data.Module || "Leads";
-
-    if (!recordId) {
-        showError("Unable to determine Record ID.");
-        return;
-    }
-
     try {
+        if (!(await ensureAuthkeyConfigured())) return;
+
+        recordId = Array.isArray(data.EntityId) ? data.EntityId[0] : (data.EntityId || data.RecordID || data.RecordId || data.recordId);
+        moduleName = data.Entity || data.Module || "Leads";
+
+        if (!recordId) {
+            showError("Unable to determine Record ID.");
+            return;
+        }
+
         record = await getCrmRecord(recordId, moduleName);
         crmFields = await getCrmFields(moduleName);
         updateRecipientLabel();
@@ -25,7 +27,10 @@ ZOHO.embeddedApp.on("PageLoad", async data => {
 
 function showError(message) {
     setStatus(message);
-    document.getElementById("configureAuthkey").hidden = !/credentials have not been configured/i.test(message);
+    const configureLink = document.getElementById("configureAuthkey");
+    if (configureLink) {
+        configureLink.hidden = !/credentials have not been configured|authkey not found|not configured/i.test(message);
+    }
 }
 
 function updateRecipientLabel() {
@@ -68,10 +73,6 @@ async function sendMessage() {
     });
 
     await createDeliveryNote(channel, recipient, templateId, result);
-
-    // Clear the previous message state, then immediately load templates again
-    // for the default channel. This keeps the widget ready for the next send
-    // without requiring the user to manually change the channel.
     await resetMessageForm();
     setStatus("Message submitted successfully.");
 }
@@ -80,9 +81,7 @@ async function resetMessageForm() {
     const channel = document.getElementById("channel");
     const templateSelect = document.getElementById("templateSelect");
 
-    if (channel) {
-        channel.selectedIndex = 0;
-    }
+    if (channel) channel.selectedIndex = 0;
 
     if (templateSelect) {
         templateSelect.innerHTML = "";
@@ -101,9 +100,6 @@ async function resetMessageForm() {
     if (preview) preview.value = "";
 
     updateRecipientLabel();
-
-    // The old reset code emptied the template dropdown but never loaded it
-    // again. Reload templates for the selected default channel immediately.
     await refreshTemplates();
 }
 
