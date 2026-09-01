@@ -69,12 +69,14 @@ async function sendMessage() {
 
     await createDeliveryNote(channel, recipient, templateId, result);
 
-    // Clear the form after a successful send so the next message starts fresh.
-    resetMessageForm();
+    // Clear the previous message state, then immediately load templates again
+    // for the default channel. This keeps the widget ready for the next send
+    // without requiring the user to manually change the channel.
+    await resetMessageForm();
     setStatus("Message submitted successfully.");
 }
 
-function resetMessageForm() {
+async function resetMessageForm() {
     const channel = document.getElementById("channel");
     const templateSelect = document.getElementById("templateSelect");
 
@@ -90,7 +92,6 @@ function resetMessageForm() {
         templateSelect.appendChild(option);
     }
 
-    // previewTemplate/loadTemplates may render variable controls in one of these containers.
     ["variablesContainer", "variableMapping", "variables", "templateVariables"].forEach(id => {
         const container = document.getElementById(id);
         if (container) container.replaceChildren();
@@ -100,6 +101,10 @@ function resetMessageForm() {
     if (preview) preview.value = "";
 
     updateRecipientLabel();
+
+    // The old reset code emptied the template dropdown but never loaded it
+    // again. Reload templates for the selected default channel immediately.
+    await refreshTemplates();
 }
 
 async function createDeliveryNote(channel, recipient, templateId, response) {
