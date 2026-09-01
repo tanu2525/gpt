@@ -15,39 +15,50 @@ function isAuthkeyMissingError(error) {
     return /authkey not found|credentials have not been configured|not configured/i.test(message);
 }
 
-async function openAuthkeySettings() {
-    try {
-        /*
-         * In the Zoho Embedded App SDK used by this extension, WebTab is
-         * not available under ZOHO.CRM.UI. The supported API for opening a
-         * Web Tab widget is ZOHO.CRM.UI.Widget.open().
-         *
-         * The widget Entity name follows the Zoho Web Tab convention:
-         * WebTab1_Widget.
-         */
-        if (!ZOHO?.CRM?.UI?.Widget?.open) {
-            throw new Error("Zoho Widget.open API is not available in this context.");
-        }
-
-        await ZOHO.CRM.UI.Widget.open({
-            Entity: "WebTab1_Widget"
-        });
-    } catch (error) {
-        console.error("Unable to open Authkey Settings Web Tab:", error);
-        alert("Unable to open Authkey Settings. Please open the 'authkey setting' tab from the Zoho CRM navigation.");
-    }
-}
-
 function showAuthkeyRequiredMessage() {
     if (document.getElementById("authkeyRequiredScreen")) return;
 
     document.body.innerHTML = `
-        <div id="authkeyRequiredScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:Arial,sans-serif;background:#f6f8fb;">
-            <div style="max-width:520px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:32px;text-align:center;box-shadow:0 8px 24px rgba(15,23,42,.08);">
-                <div style="font-size:40px;margin-bottom:12px;">🔐</div>
-                <h2 style="margin:0 0 12px;color:#1f2937;">Authkey Required</h2>
-                <p style="margin:0 0 24px;color:#4b5563;line-height:1.6;">To use this feature, please add and validate your Authkey in the Authkey Settings page first.</p>
-                <button type="button" onclick="openAuthkeySettings()" style="display:inline-block;padding:11px 18px;background:#2563eb;color:#fff;border:0;border-radius:6px;font-weight:600;cursor:pointer;">Open Authkey Settings</button>
+        <div id="authkeyRequiredScreen"
+            style="
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:24px;
+                box-sizing:border-box;
+                font-family:Arial,sans-serif;
+                background:#f6f8fb;
+            "
+        >
+            <div
+                style="
+                    max-width:520px;
+                    width:100%;
+                    background:#fff;
+                    border:1px solid #e2e8f0;
+                    border-radius:12px;
+                    padding:32px;
+                    text-align:center;
+                    box-shadow:0 8px 24px rgba(15,23,42,.08);
+                "
+            >
+                <div style="font-size:40px;margin-bottom:12px;">
+                    🔐
+                </div>
+
+                <h2 style="margin:0 0 12px;color:#1f2937;">
+                    Authkey Required
+                </h2>
+
+                <p style="margin:0;color:#4b5563;line-height:1.7;">
+                    An Authkey has not been configured for this Zoho CRM
+                    organization.
+                    <br><br>
+                    Please open the <strong>Authkey Settings</strong> tab
+                    from the Zoho CRM navigation and add a valid Authkey
+                    before using this feature.
+                </p>
             </div>
         </div>
     `;
