@@ -2,10 +2,7 @@ let moduleFields = [];
 
 async function loadModules() {
     const organizationId = await getOrganizationId();
-    const result = await requestJson(
-        `/api/workflow/zoho/modules?organizationId=${encodeURIComponent(organizationId)}`
-    );
-
+    const result = await requestJson(`/api/workflow/zoho/modules?organizationId=${encodeURIComponent(organizationId)}`);
     const select = document.getElementById("module");
     select.innerHTML = "";
 
@@ -23,19 +20,13 @@ async function loadModules() {
         select.appendChild(option);
     });
 
-    if (!modules.length) {
-        throw new Error("No Zoho CRM modules are available for this organization.");
-    }
+    if (!modules.length) throw new Error("No Zoho CRM modules are available for this organization.");
 }
 
 async function loadModuleFields() {
     const organizationId = await getOrganizationId();
     const module = document.getElementById("module").value;
-
-    const result = await requestJson(
-        `/api/workflow/zoho/fields?organizationId=${encodeURIComponent(organizationId)}&module=${encodeURIComponent(module)}`
-    );
-
+    const result = await requestJson(`/api/workflow/zoho/fields?organizationId=${encodeURIComponent(organizationId)}&module=${encodeURIComponent(module)}`);
     moduleFields = result.fields || [];
     populateRecipientFields();
     await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
@@ -44,17 +35,13 @@ async function loadModuleFields() {
 function populateRecipientFields() {
     const select = document.getElementById("recipientField");
     const channel = document.getElementById("channel").value.toLowerCase();
-
     select.innerHTML = "";
 
     const preferred = channel === "email"
         ? moduleFields.filter(field => field.data_type === "email" || field.api_name === "Email")
-        : moduleFields.filter(field =>
-            ["phone", "mobile", "email", "lookup"].includes(String(field.data_type || "").toLowerCase())
-        );
+        : moduleFields.filter(field => ["phone", "mobile", "email", "lookup"].includes(String(field.data_type || "").toLowerCase()));
 
     const fields = preferred.length ? preferred : moduleFields;
-
     fields.forEach(field => {
         const option = document.createElement("option");
         option.value = field.api_name;
@@ -72,6 +59,7 @@ function populateRecipientFields() {
 
 async function initializeWorkflow() {
     try {
+        if (!(await ensureAuthkeyConfigured())) return;
         await loadModules();
         await loadModuleFields();
         await loadTemplates();
@@ -85,15 +73,11 @@ ZOHO.embeddedApp.on("PageLoad", initializeWorkflow);
 
 async function saveWorkflow() {
     const variables = {};
-
-    document
-        .querySelectorAll("#variablesContainer select")
-        .forEach(select => {
-            variables[select.id.replace("map_", "")] = select.value;
-        });
+    document.querySelectorAll("#variablesContainer select").forEach(select => {
+        variables[select.id.replace("map_", "")] = select.value;
+    });
 
     const template = document.getElementById("templateSelect").selectedOptions[0];
-
     const body = {
         organizationId: await getOrganizationId(),
         workflowName: document.getElementById("workflowName").value.trim(),
@@ -114,11 +98,9 @@ async function saveWorkflow() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
         });
-
-        document.getElementById("status").textContent =
-            result.zoho?.webhookUrl
-                ? "Workflow saved and Zoho automation configured successfully."
-                : "Workflow saved successfully.";
+        document.getElementById("status").textContent = result.zoho?.webhookUrl
+            ? "Workflow saved and Zoho automation configured successfully."
+            : "Workflow saved successfully.";
     } catch (error) {
         document.getElementById("status").textContent = error.message;
     }
@@ -127,16 +109,13 @@ async function saveWorkflow() {
 async function renderMappings(body = "") {
     const container = document.getElementById("variablesContainer");
     container.innerHTML = "";
-
     const variables = getTemplateVariables(body);
 
     variables.forEach(variable => {
         const div = document.createElement("div");
         div.className = "mapping";
-
         const label = document.createElement("label");
         label.textContent = variable;
-
         const select = document.createElement("select");
         select.id = `map_${variable}`;
 
@@ -161,14 +140,11 @@ document.getElementById("module").addEventListener("change", () => {
 
 document.getElementById("channel").addEventListener("change", () => {
     populateRecipientFields();
-    loadTemplates()
-        .then(previewWorkflow)
-        .catch(error => {
-            document.getElementById("status").textContent = error.message;
-        });
+    loadTemplates().then(previewWorkflow).catch(error => {
+        document.getElementById("status").textContent = error.message;
+    });
 });
 
 document.getElementById("templateSelect").addEventListener("change", previewWorkflow);
 document.getElementById("saveBtn").addEventListener("click", saveWorkflow);
-
 ZOHO.embeddedApp.init();
