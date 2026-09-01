@@ -17,22 +17,27 @@ function getAccountsUrl(apiDomain) {
     if (domain.includes("zoho.jp")) return "https://accounts.zoho.jp";
     if (domain.includes("zoho.sg")) return "https://accounts.zoho.sg";
     if (domain.includes("zoho.in")) return "https://accounts.zoho.in";
+
     return "https://accounts.zoho.com";
 }
 
 function getCrmApiDomain(apiDomain) {
-    const domain = String(apiDomain || "").toLowerCase();
+    const domain = String(
+        apiDomain || process.env.ZOHO_API_DOMAIN || process.env.ZOHO_CRM_BASE_URL || ""
+    ).toLowerCase();
 
-    if (domain.includes("zoho.eu")) return "https://www.zohoapis.eu";
-    if (domain.includes("zoho.com.au")) return "https://www.zohoapis.com.au";
-    if (domain.includes("zoho.jp")) return "https://www.zohoapis.jp";
-    if (domain.includes("zoho.sg")) return "https://www.zohoapis.sg";
-    if (domain.includes("zoho.in")) return "https://www.zohoapis.in";
+    if (domain.includes("sandbox.zohoapis.eu")) return "https://sandbox.zohoapis.eu";
+    if (domain.includes("sandbox.zohoapis.com.au")) return "https://sandbox.zohoapis.com.au";
+    if (domain.includes("sandbox.zohoapis.jp")) return "https://sandbox.zohoapis.jp";
+    if (domain.includes("sandbox.zohoapis.sg")) return "https://sandbox.zohoapis.sg";
+    if (domain.includes("sandbox.zohoapis.in")) return "https://sandbox.zohoapis.in";
+    if (domain.includes("sandbox.zohoapis.com")) return "https://sandbox.zohoapis.com";
+
     if (domain.includes("zohoapis.eu")) return "https://www.zohoapis.eu";
-    if (domain.includes("zohoapis.com.au")) return "https://www.zohoapis.com.au";
-    if (domain.includes("zohoapis.jp")) return "https://www.zohoapis.jp";
-    if (domain.includes("zohoapis.sg")) return "https://www.zohoapis.sg";
-    if (domain.includes("zohoapis.in")) return "https://www.zohoapis.in";
+    if (domain.includes("zoho.com.au") || domain.includes("zohoapis.com.au")) return "https://www.zohoapis.com.au";
+    if (domain.includes("zoho.jp") || domain.includes("zohoapis.jp")) return "https://www.zohoapis.jp";
+    if (domain.includes("zoho.sg") || domain.includes("zohoapis.sg")) return "https://www.zohoapis.sg";
+    if (domain.includes("zoho.in") || domain.includes("zohoapis.in")) return "https://www.zohoapis.in";
 
     return "https://www.zohoapis.com";
 }
@@ -46,9 +51,15 @@ function createState(organizationId, apiDomain) {
         issuedAt: Date.now()
     };
 
+    const stateSecret = process.env.ZOHO_OAUTH_STATE_SECRET || CLIENT_SECRET;
+
+    if (!stateSecret) {
+        throw new Error("Zoho OAuth state secret is not configured.");
+    }
+
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const signature = crypto
-        .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
+        .createHmac("sha256", stateSecret)
         .update(encoded)
         .digest("base64url");
 
@@ -62,19 +73,36 @@ function getOrganizationFromState(state) {
     if (parts.length !== 2) throw new Error("Invalid Zoho OAuth state.");
 
     const [encoded, signature] = parts;
+    const stateSecret = process.env.ZOHO_OAUTH_STATE_SECRET || CLIENT_SECRET;
+
+    if (!stateSecret) {
+        throw new Error("Zoho OAuth state secret is not configured.");
+    }
+
     const expectedSignature = crypto
-        .createHmac("sha256", process.env.WEBHOOK_SECRET || CLIENT_SECRET)
+        .createHmac("sha256", stateSecret)
         .update(encoded)
         .digest("base64url");
 
     if (
         signature.length !== expectedSignature.length ||
-        !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+        !crypto.timingSafeEqual(
+            Buffer.from(signature),
+            Buffer.from(expectedSignature)
+        )
     ) {
         throw new Error("Invalid Zoho OAuth state.");
     }
 
-    return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    const payload = JSON.parse(
+        Buffer.from(encoded, "base64url").toString("utf8")
+    );
+
+    if (!payload.organizationId || !payload.redirectUri || !payload.crmApiDomain) {
+        throw new Error("Invalid Zoho OAuth state payload.");
+    }
+
+    return payload;
 }
 
 function createAuthorizationUrl(organizationId, apiDomain) {
@@ -99,9 +127,14 @@ function createAuthorizationUrl(organizationId, apiDomain) {
 
 async function exchangeCode(code, redirectUri = REDIRECT_URI, apiDomain) {
     if (!code) throw new Error("Zoho authorization code is required.");
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+        throw new Error("Zoho OAuth client credentials are not configured.");
+    }
+
+    const accountsUrl = getAccountsUrl(apiDomain);
 
     const response = await axios.post(
-        `${getAccountsUrl(apiDomain)}/oauth/v2/token`,
+        `${accountsUrl}/oauth/v2/token`,
         null,
         {
             params: {
@@ -117,7 +150,12 @@ async function exchangeCode(code, redirectUri = REDIRECT_URI, apiDomain) {
     return response.data;
 }
 
-async function saveRefreshToken({ organizationId, refreshToken, apiDomain, scope }) {
+async function saveRefreshToken({
+    organizationId,
+    refreshToken,
+    apiDomain,
+    scope
+}) {
     if (!organizationId) throw new Error("organizationId is required.");
     if (!refreshToken) throw new Error("refreshToken is required.");
 
@@ -149,10 +187,15 @@ async function getAccessToken(organizationId) {
         throw new Error("Zoho refresh token is missing for this organization.");
     }
 
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+        throw new Error("Zoho OAuth client credentials are not configured.");
+    }
+
     const apiDomain = getCrmApiDomain(connection.apiDomain);
+    const accountsUrl = getAccountsUrl(apiDomain);
 
     const response = await axios.post(
-        `${getAccountsUrl(apiDomain)}/oauth/v2/token`,
+        `${accountsUrl}/oauth/v2/token`,
         null,
         {
             params: {
