@@ -1,7 +1,18 @@
 function getTemplateVariables(body = "") {
     const curlyVariables = [...body.matchAll(/{{(.*?)}}/g)].map(match => match[1].trim());
     const hashVariables = [...body.matchAll(/{#(.*?)#}/g)].map(match => match[1].trim());
-    return [...new Set([...curlyVariables, ...hashVariables].filter(Boolean))];
+
+    // RCS templates returned by Authkey can use placeholders such as [var1].
+    // Support that format too, so RCS variables get the same CRM field mapping UI.
+    const squareBracketVariables = [...body.matchAll(/\[([^\[\]]+)\]/g)]
+        .map(match => match[1].trim())
+        .filter(variable => /^var\d+$/i.test(variable));
+
+    return [...new Set([
+        ...curlyVariables,
+        ...hashVariables,
+        ...squareBracketVariables
+    ].filter(Boolean))];
 }
 
 function renderTextVariableInputs(body, containerId = "variablesContainer") {
