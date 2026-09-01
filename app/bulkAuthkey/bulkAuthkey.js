@@ -14,31 +14,36 @@ function setStatus(message, isError = false) {
 
 function normalizeModule(value) {
     const module = String(value || "").trim();
-
     if (module === "Lead") return "Leads";
     if (module === "Contact") return "Contacts";
     if (module === "Account") return "Accounts";
-
     return module;
 }
 
 async function initialize(data = {}) {
-    moduleName = normalizeModule(
-        data.Entity ||
-        data.Module ||
-        data.entity ||
-        data.module
-    );
+    try {
+        if (!(await ensureAuthkeyConfigured())) return;
 
-    document.getElementById("moduleName").textContent = moduleName || "Unknown";
+        moduleName = normalizeModule(
+            data.Entity ||
+            data.Module ||
+            data.entity ||
+            data.module
+        );
 
-    if (!SUPPORTED_MODULES.has(moduleName)) {
-        setStatus("This button is supported only in Leads, Contacts and Accounts.", true);
-        return;
+        document.getElementById("moduleName").textContent = moduleName || "Unknown";
+
+        if (!SUPPORTED_MODULES.has(moduleName)) {
+            setStatus("This button is supported only in Leads, Contacts and Accounts.", true);
+            return;
+        }
+
+        document.getElementById("syncBtn").disabled = false;
+        setStatus(`Ready to send all ${moduleName} records to Authkey.`);
+    } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Unable to verify Authkey configuration.", true);
     }
-
-    document.getElementById("syncBtn").disabled = false;
-    setStatus(`Ready to send all ${moduleName} records to Authkey.`);
 }
 
 async function syncModule() {
@@ -53,16 +58,10 @@ async function syncModule() {
 
     try {
         const organizationId = await getOrganizationId();
-
         const result = await requestJson("/api/zoho/authkey/sync-module", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                organizationId,
-                module: moduleName
-            })
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ organizationId, module: moduleName })
         });
 
         document.getElementById("summary").hidden = false;
@@ -88,9 +87,6 @@ async function syncModule() {
     }
 }
 
-document.getElementById("syncBtn").addEventListener("click", () => {
-    syncModule();
-});
-
+document.getElementById("syncBtn").addEventListener("click", () => syncModule());
 ZOHO.embeddedApp.on("PageLoad", initialize);
 ZOHO.embeddedApp.init();
