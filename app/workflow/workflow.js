@@ -1,5 +1,27 @@
 let moduleFields = [];
 
+function setStatus(message) {
+    document.getElementById("status").textContent = message || "";
+}
+
+async function connectZoho() {
+    try {
+        const organizationId = await getOrganizationId();
+        const result = await requestJson(
+            `/api/workflow/zoho/oauth?organizationId=${encodeURIComponent(organizationId)}`
+        );
+
+        if (!result.authorizationUrl) {
+            throw new Error("Zoho authorization URL was not generated.");
+        }
+
+        window.open(result.authorizationUrl, "_blank");
+        setStatus("Complete Zoho authorization in the opened window, then return here and reload this page.");
+    } catch (error) {
+        setStatus(error.message);
+    }
+}
+
 async function loadModules() {
     const organizationId = await getOrganizationId();
     const result = await requestJson(`/api/workflow/zoho/modules?organizationId=${encodeURIComponent(organizationId)}`);
@@ -9,7 +31,6 @@ async function loadModules() {
     const modules = (result.modules || [])
         .filter(module => module.api_name)
         .filter(module => module.status === "visible" || !module.status)
-        .filter(module => !["Notes", "Calls"].includes(module.api_name))
         .sort((a, b) => String(a.module_name || a.plural_label || a.api_name)
             .localeCompare(String(b.module_name || b.plural_label || b.api_name)));
 
@@ -20,7 +41,9 @@ async function loadModules() {
         select.appendChild(option);
     });
 
-    if (!modules.length) throw new Error("No Zoho CRM modules are available for this organization.");
+    if (!modules.length) {
+        throw new Error("No supported Zoho CRM modules are available for this organization.");
+    }
 }
 
 async function loadModuleFields() {
@@ -39,9 +62,10 @@ function populateRecipientFields() {
 
     const preferred = channel === "email"
         ? moduleFields.filter(field => field.data_type === "email" || field.api_name === "Email")
-        : moduleFields.filter(field => ["phone", "mobile", "email", "lookup"].includes(String(field.data_type || "").toLowerCase()));
+        : moduleFields.filter(field => ["phone", "mobile", "lookup"].includes(String(field.data_type || "").toLowerCase()));
 
     const fields = preferred.length ? preferred : moduleFields;
+
     fields.forEach(field => {
         const option = document.createElement("option");
         option.value = field.api_name;
@@ -65,7 +89,7 @@ async function initializeWorkflow() {
         await loadTemplates();
         await previewWorkflow();
     } catch (error) {
-        document.getElementById("status").textContent = error.message;
+        setStatus(`${error.message} Click 'Connect Zoho CRM' if this organization has not been authorized yet.`);
     }
 }
 
@@ -93,16 +117,18 @@ async function saveWorkflow() {
     };
 
     try {
+        setStatus("Saving workflow and configuring Zoho automation...");
         const result = await requestJson("/api/workflow/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
         });
-        document.getElementById("status").textContent = result.zoho?.webhookUrl
-            ? "Workflow saved and Zoho automation configured successfully."
-            : "Workflow saved successfully.";
+
+        setStatus(result.zoho?.webhookUrl
+            ? "Workflow saved and Zoho webhook + workflow rule configured successfully."
+            : "Workflow saved successfully.");
     } catch (error) {
-        document.getElementById("status").textContent = error.message;
+        setStatus(error.message);
     }
 }
 
@@ -133,18 +159,15 @@ async function renderMappings(body = "") {
 }
 
 document.getElementById("module").addEventListener("change", () => {
-    loadModuleFields().then(previewWorkflow).catch(error => {
-        document.getElementById("status").textContent = error.message;
-    });
+    loadModuleFields().then(previewWorkflow).catch(error => setStatus(error.message));
 });
 
 document.getElementById("channel").addEventListener("change", () => {
     populateRecipientFields();
-    loadTemplates().then(previewWorkflow).catch(error => {
-        document.getElementById("status").textContent = error.message;
-    });
+    loadTemplates().then(previewWorkflow).catch(error => setStatus(error.message));
 });
 
 document.getElementById("templateSelect").addEventListener("change", previewWorkflow);
+document.getElementById("connectZohoBtn").addEventListener("click", connectZoho);
 document.getElementById("saveBtn").addEventListener("click", saveWorkflow);
 ZOHO.embeddedApp.init();
