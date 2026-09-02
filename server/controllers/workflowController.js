@@ -35,9 +35,16 @@ exports.getZohoOAuthUrl = async function(req, res) {
             return res.status(400).json({ success: false, message: "organizationId is required." });
         }
 
+        if (!apiDomain) {
+            return res.status(400).json({
+                success: false,
+                message: "Zoho API domain could not be detected from the current CRM organization. Reopen the extension from Zoho CRM and try again."
+            });
+        }
+
         return res.json({
             success: true,
-            authorizationUrl: zohoOAuthService.createAuthorizationUrl(String(organizationId), apiDomain)
+            authorizationUrl: zohoOAuthService.createAuthorizationUrl(String(organizationId), String(apiDomain))
         });
     } catch (error) {
         return res.status(error.statusCode || 500).json({ success: false, message: error.message });
@@ -59,163 +66,50 @@ exports.getZohoConnectionStatus = async function(req, res) {
     }
 };
 
-exports.zohoOAuthCallback = async function (req, res) {
+exports.zohoOAuthCallback = async function(req, res) {
     try {
-        const { code, state, error, location } = req.query;
+        const { code, state, error } = req.query;
+        const accountsServer = req.query["accounts-server"];
 
-        // IMPORTANT:
-        // "accounts-server" has a hyphen, so access it like this.
-        const accountsServer =
-            req.query["accounts-server"];
+        if (error) return res.status(400).send(`Zoho authorization failed: ${error}`);
+        if (!code || !state) return res.status(400).send("Zoho authorization code/state is missing.");
 
-        if (error) {
-            return res
-                .status(400)
-                .send(`Zoho authorization failed: ${error}`);
-        }
+        const stateData = zohoOAuthService.getOrganizationFromState(state);
 
-        if (!code || !state) {
-            return res
-                .status(400)
-                .send(
-                    "Zoho authorization code/state is missing."
-                );
-        }
+        // Zoho's callback server is authoritative for the one-time grant code.
+        const accountsDomain = accountsServer || stateData.accountsDomain;
+        if (!accountsDomain) throw new Error("Zoho Accounts server is missing from the OAuth callback.");
 
-        const stateData =
-            zohoOAuthService.getOrganizationFromState(state);
-
-        console.log(
-            "========== ZOHO OAUTH CALLBACK =========="
-        );
-
-        console.log(
-            "Code received:",
-            !!code
-        );
-
-        console.log(
-            "State received:",
-            !!state
-        );
-
-        console.log(
-            "Location:",
-            location
-        );
-
-        console.log(
-            "Accounts Server from Zoho:",
-            accountsServer
-        );
-
-        console.log(
-            "State Accounts Domain:",
-            stateData.accountsDomain
-        );
-
-        console.log(
-            "========================================="
-        );
-
-        /*
-         * Priority:
-         *
-         * 1. Accounts server returned by Zoho
-         * 2. Accounts domain stored in OAuth state
-         * 3. Environment default
-         */
-
-        const accountsDomain =
-            accountsServer ||
-            stateData.accountsDomain ||
-            process.env.ZOHO_ACCOUNTS_URL;
-
-        console.log(
-            "Using Accounts Domain for token exchange:",
+        const token = await zohoOAuthService.exchangeCode(
+            code,
+            stateData.redirectUri,
             accountsDomain
         );
 
-        const token =
-            await zohoOAuthService.exchangeCode(
-                code,
-                stateData.redirectUri,
-                accountsDomain
-            );
-
-        console.log(
-            "========== ZOHO TOKEN RESPONSE =========="
-        );
-
-        console.log(
-            JSON.stringify(token, null, 2)
-        );
-
-        console.log(
-            "========================================="
-        );
-
-        if (token.error) {
-            return res
-                .status(400)
-                .send(
-                    `Zoho token exchange failed: ${token.error}`
-                );
-        }
-
         if (!token.refresh_token) {
             return res.status(400).send(
-                "Zoho did not return a refresh token. " +
-                "Make sure access_type=offline is used and " +
-                "the requested scopes are approved."
+                "Zoho did not return a refresh token. Revoke the previous connection if necessary and authorize again with offline access."
             );
+        }
+
+        if (!token.api_domain) {
+            return res.status(400).send("Zoho did not return an API domain for this connection.");
         }
 
         await zohoOAuthService.saveRefreshToken({
             organizationId: stateData.organizationId,
             refreshToken: token.refresh_token,
-
-            apiDomain:
-                token.api_domain ||
-                stateData.requestedApiDomain,
-
-            scope:
-                token.scope ||
-                process.env.ZOHO_SCOPES
+            apiDomain: token.api_domain,
+            scope: token.scope || process.env.ZOHO_SCOPES
         });
 
         return res.send(
-            "Zoho CRM connected successfully. " +
-            "You can close this window and return " +
-            "to the Authkey Workflow page."
+            "Zoho CRM connected successfully. You can close this window and return to the Authkey Workflow page."
         );
-
     } catch (error) {
-
-        console.error(
-            "========== ZOHO OAUTH ERROR =========="
-        );
-
-        console.error(
-            error.response?.data ||
-            error.message
-        );
-
-        console.error(
-            "======================================"
-        );
-
-        return res
-            .status(
-                error.statusCode ||
-                error.response?.status ||
-                500
-            )
-            .send(
-                error.response?.data?.message ||
-                error.response?.data?.error ||
-                error.message
-            );
+        console.error("Zoho OAuth callback error:", error.response?.data || error.message);
+        return res.status(error.statusCode || error.response?.status || 500)
+            .send(error.response?.data?.message || error.response?.data?.error || error.message);
     }
 };
 
@@ -230,19 +124,14 @@ exports.saveWorkflow = async function(req, res) {
         const module = String(req.body.module).trim();
 
         if (!ALLOWED_MODULES.includes(module)) {
-            return res.status(400).json({
-                success: false,
-                message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.`
-            });
+            return res.status(400).json({ success: false, message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.` });
         }
 
         if (!["create", "edit"].includes(trigger)) {
             return res.status(400).json({ success: false, message: "Only Create and Update triggers are supported." });
         }
 
-        const existingWorkflow = await WorkflowConfig.findOne({ organizationId, workflowName: req.body.workflowName })
-            .select("+webhookSecretHash");
-
+        const existingWorkflow = await WorkflowConfig.findOne({ organizationId, workflowName: req.body.workflowName }).select("+webhookSecretHash");
         let webhookSecret = null;
         let webhookSecretHash = existingWorkflow?.webhookSecretHash || null;
 
@@ -305,19 +194,9 @@ exports.saveWorkflow = async function(req, res) {
         const workflowResponse = workflow.toObject();
         delete workflowResponse.webhookSecretHash;
 
-        return res.status(201).json({
-            success: true,
-            workflowId: workflow._id,
-            workflow: workflowResponse,
-            zoho: zohoSetup
-        });
+        return res.status(201).json({ success: true, workflowId: workflow._id, workflow: workflowResponse, zoho: zohoSetup });
     } catch (error) {
-        console.error("========== SAVE WORKFLOW ERROR ==========");
-        console.error("Message:", error.message);
-        console.error("Status:", error.response?.status || error.statusCode);
-        console.error("Zoho Response:", JSON.stringify(error.response?.data, null, 2));
-        console.error("==========================================");
-
+        console.error("SAVE WORKFLOW ERROR:", error.response?.data || error.message);
         return res.status(error.statusCode || error.response?.status || 500).json({
             success: false,
             message: error.response?.data?.message || error.message,
@@ -329,10 +208,7 @@ exports.saveWorkflow = async function(req, res) {
 exports.triggerWorkflow = async function(req, res) {
     try {
         const workflow = await WorkflowConfig.findById(req.params.workflowId).select("+webhookSecretHash");
-
-        if (!workflow || !workflow.enabled) {
-            return res.status(404).json({ success: false, message: "Workflow not found or disabled." });
-        }
+        if (!workflow || !workflow.enabled) return res.status(404).json({ success: false, message: "Workflow not found or disabled." });
 
         const receivedSecret = req.get("X-Workflow-Secret");
         if (!verifyWebhookSecret(receivedSecret, workflow.webhookSecretHash)) {
@@ -342,10 +218,7 @@ exports.triggerWorkflow = async function(req, res) {
         const result = await workflowService.trigger(workflow._id, req.body || {});
         return res.json({ success: true, ...result });
     } catch (error) {
-        return res.status(error.statusCode || error.response?.status || 500).json({
-            success: false,
-            message: error.response?.data?.message || error.message
-        });
+        return res.status(error.statusCode || error.response?.status || 500).json({ success: false, message: error.response?.data?.message || error.message });
     }
 };
 
@@ -354,10 +227,7 @@ exports.sendWorkflowMessage = async function(req, res) {
         const result = await workflowService.send(req.body);
         return res.json({ success: true, ...result });
     } catch (error) {
-        return res.status(error.statusCode || error.response?.status || 500).json({
-            success: false,
-            message: error.response?.data?.message || error.message
-        });
+        return res.status(error.statusCode || error.response?.status || 500).json({ success: false, message: error.response?.data?.message || error.message });
     }
 };
 
@@ -369,18 +239,10 @@ exports.getZohoModules = async function(req, res) {
         const tokenData = await zohoOAuthService.getAccessToken(String(organizationId));
         const modules = await zohoCrmService.getModules(tokenData.accessToken, tokenData.apiDomain);
 
-        return res.json({
-            success: true,
-            apiDomain: tokenData.apiDomain,
-            environment: tokenData.environment,
-            modules: modules.filter(module => ALLOWED_MODULES.includes(module.api_name))
-        });
+        return res.json({ success: true, apiDomain: tokenData.apiDomain, environment: tokenData.environment, modules: modules.filter(module => ALLOWED_MODULES.includes(module.api_name)) });
     } catch (error) {
         console.error("Get Zoho modules error:", error.response?.data || error.message);
-        return res.status(error.statusCode || error.response?.status || 500).json({
-            success: false,
-            message: error.response?.data?.message || error.message
-        });
+        return res.status(error.statusCode || error.response?.status || 500).json({ success: false, message: error.response?.data?.message || error.message });
     }
 };
 
@@ -389,23 +251,13 @@ exports.getZohoFields = async function(req, res) {
         const { organizationId, module } = req.query;
         if (!organizationId) return res.status(400).json({ success: false, message: "organizationId is required." });
         if (!module) return res.status(400).json({ success: false, message: "module is required." });
-
-        if (!ALLOWED_MODULES.includes(module)) {
-            return res.status(400).json({
-                success: false,
-                message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.`
-            });
-        }
+        if (!ALLOWED_MODULES.includes(module)) return res.status(400).json({ success: false, message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.` });
 
         const tokenData = await zohoOAuthService.getAccessToken(String(organizationId));
         const fields = await zohoCrmService.getFields(tokenData.accessToken, module, tokenData.apiDomain);
-
         return res.json({ success: true, module, fields });
     } catch (error) {
         console.error("Get Zoho fields error:", error.response?.data || error.message);
-        return res.status(error.statusCode || error.response?.status || 500).json({
-            success: false,
-            message: error.response?.data?.message || error.message
-        });
+        return res.status(error.statusCode || error.response?.status || 500).json({ success: false, message: error.response?.data?.message || error.message });
     }
 };
