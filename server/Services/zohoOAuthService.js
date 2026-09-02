@@ -113,21 +113,71 @@ function createAuthorizationUrl(organizationId, apiDomain) {
     return `${accountsUrl}/oauth/v2/auth?${params.toString()}`;
 }
 
-async function exchangeCode(code, redirectUri = REDIRECT_URI, accountsDomain) {
-    if (!code) throw new Error("Zoho authorization code is required.");
-    if (!CLIENT_ID || !CLIENT_SECRET) throw new Error("Zoho OAuth client credentials are not configured.");
+async function exchangeCode(
+    code,
+    redirectUri = REDIRECT_URI,
+    accountsDomain
+) {
+    if (!code) {
+        throw new Error(
+            "Zoho authorization code is required."
+        );
+    }
 
-    const accountsUrl = getAccountsUrl(accountsDomain);
-    const response = await axios.post(`${accountsUrl}/oauth/v2/token`, null, {
-        params: {
-            grant_type: "authorization_code",
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            code,
-            redirect_uri: redirectUri
-        }
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+        throw new Error(
+            "Zoho OAuth client credentials are not configured."
+        );
+    }
+
+    const accountsUrl = accountsDomain
+        ? String(accountsDomain).replace(/\/$/, "")
+        : getAccountsUrl();
+
+    console.log(
+        "Exchanging OAuth code at:",
+        `${accountsUrl}/oauth/v2/token`
+    );
+
+    const requestBody = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        code: code,
+        redirect_uri: redirectUri
     });
 
+    const response = await axios.post(
+        `${accountsUrl}/oauth/v2/token`,
+        requestBody.toString(),
+        {
+            headers: {
+                "Content-Type":
+                    "application/x-www-form-urlencoded"
+            }
+        }
+    );
+console.log("\n========== ZOHO REFRESH TOKEN RESPONSE ==========");
+console.log("Accounts URL:", accountsUrl);
+console.log(
+    "Response:",
+    JSON.stringify({
+        hasAccessToken: !!response.data.access_token,
+        api_domain: response.data.api_domain,
+        scope: response.data.scope,
+        expires_in: response.data.expires_in,
+        error: response.data.error
+    }, null, 2)
+);
+console.log("=================================================\n");
+
+if (!response.data.access_token) {
+    throw new Error(
+        `Zoho did not return an access token: ${
+            response.data.error || "Unknown error"
+        }`
+    );
+}
     return response.data;
 }
 
@@ -193,8 +243,53 @@ async function getAccessToken(organizationId) {
         }
     });
 
-    // Zoho returns the authoritative API domain for the token/environment.
-    const tokenApiDomain = getCrmApiDomain(response.data.api_domain || apiDomain);
+   const tokenApiDomain = getCrmApiDomain(
+    response.data.api_domain || apiDomain
+);
+
+console.log("\n========== ZOHO REFRESH RESPONSE ==========");
+console.log("Accounts URL:", accountsUrl);
+console.log(
+    "Has Access Token:",
+    Boolean(response.data.access_token)
+);
+console.log("API Domain:", response.data.api_domain);
+console.log("Scope:", response.data.scope);
+console.log("Full Response:", response.data);
+console.log("============================================\n");
+console.log("\n========== TESTING FRESH ZOHO TOKEN ==========");
+console.log("Token API Domain:", tokenApiDomain);
+console.log(
+    "Token Prefix:",
+    response.data.access_token?.substring(0, 20)
+);
+
+try {
+    const testResponse = await axios.get(
+        `${tokenApiDomain}/crm/v8/settings/modules`,
+        {
+            headers: {
+                Authorization: `Zoho-oauthtoken ${response.data.access_token}`
+            },
+            validateStatus: () => true
+        }
+    );
+
+    console.log("Test Status:", testResponse.status);
+    console.log(
+        "Test Response:",
+        JSON.stringify(testResponse.data, null, 2)
+    );
+    console.log(
+        "Response Headers:",
+        JSON.stringify(testResponse.headers, null, 2)
+    );
+
+} catch (testError) {
+    console.error("TOKEN TEST REQUEST ERROR:", testError.message);
+}
+
+console.log("==============================================\n");
 
     if (tokenApiDomain !== connection.apiDomain) {
         connection.apiDomain = tokenApiDomain;

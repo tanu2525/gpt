@@ -7,7 +7,6 @@ const DEFAULT_CRM_BASE_URL =
 function normalizeApiDomain(apiDomain) {
     return String(apiDomain || "").replace(/\/$/, "");
 }
-
 async function zohoRequest({
     accessToken,
     method = "GET",
@@ -25,10 +24,24 @@ async function zohoRequest({
             .replace(/\/crm\/v\d+$/i, "")
             .replace(/\/$/, "") + "/crm/v8";
 
+    const requestUrl = `${baseUrl}${url}`;
+
+    console.log("\n========== ZOHO CRM REQUEST ==========");
+    console.log("URL:", requestUrl);
+    console.log("Method:", method);
+    console.log("API Domain:", apiDomain);
+    console.log(
+        "Access Token:",
+        accessToken
+            ? `${accessToken.substring(0, 15)}...`
+            : "MISSING"
+    );
+    console.log("=======================================\n");
+
     try {
         const response = await axios({
             method,
-            url: `${baseUrl}${url}`,
+            url: requestUrl,
             params,
             data,
             headers: {
@@ -38,15 +51,23 @@ async function zohoRequest({
         });
 
         return response.data;
-    } catch (error) {
-        const zohoError =
-            error.response?.data ||
-            error.message;
 
+    } catch (error) {
+        console.error("\n========== ZOHO CRM API ERROR ==========");
+        console.error("Status:", error.response?.status);
+        console.error("Request URL:", error.config?.url);
+        console.error("Method:", error.config?.method);
+        console.error("API Domain:", apiDomain);
         console.error(
-            "Zoho CRM API Error:",
-            JSON.stringify(zohoError, null, 2)
+            "Authorization present:",
+            Boolean(error.config?.headers?.Authorization)
         );
+        console.error(
+            "Zoho Response:",
+            JSON.stringify(error.response?.data, null, 2)
+        );
+        console.error("Error Message:", error.message);
+        console.error("========================================\n");
 
         throw error;
     }

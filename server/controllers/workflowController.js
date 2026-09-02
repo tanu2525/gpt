@@ -59,38 +59,163 @@ exports.getZohoConnectionStatus = async function(req, res) {
     }
 };
 
-exports.zohoOAuthCallback = async function(req, res) {
+exports.zohoOAuthCallback = async function (req, res) {
     try {
-        const { code, state, error } = req.query;
+        const { code, state, error, location } = req.query;
 
-        if (error) return res.status(400).send(`Zoho authorization failed: ${error}`);
-        if (!code || !state) return res.status(400).send("Zoho authorization code/state is missing.");
+        // IMPORTANT:
+        // "accounts-server" has a hyphen, so access it like this.
+        const accountsServer =
+            req.query["accounts-server"];
 
-        const stateData = zohoOAuthService.getOrganizationFromState(state);
-        const token = await zohoOAuthService.exchangeCode(code, stateData.redirectUri, stateData.accountsDomain);
+        if (error) {
+            return res
+                .status(400)
+                .send(`Zoho authorization failed: ${error}`);
+        }
+
+        if (!code || !state) {
+            return res
+                .status(400)
+                .send(
+                    "Zoho authorization code/state is missing."
+                );
+        }
+
+        const stateData =
+            zohoOAuthService.getOrganizationFromState(state);
+
+        console.log(
+            "========== ZOHO OAUTH CALLBACK =========="
+        );
+
+        console.log(
+            "Code received:",
+            !!code
+        );
+
+        console.log(
+            "State received:",
+            !!state
+        );
+
+        console.log(
+            "Location:",
+            location
+        );
+
+        console.log(
+            "Accounts Server from Zoho:",
+            accountsServer
+        );
+
+        console.log(
+            "State Accounts Domain:",
+            stateData.accountsDomain
+        );
+
+        console.log(
+            "========================================="
+        );
+
+        /*
+         * Priority:
+         *
+         * 1. Accounts server returned by Zoho
+         * 2. Accounts domain stored in OAuth state
+         * 3. Environment default
+         */
+
+        const accountsDomain =
+            accountsServer ||
+            stateData.accountsDomain ||
+            process.env.ZOHO_ACCOUNTS_URL;
+
+        console.log(
+            "Using Accounts Domain for token exchange:",
+            accountsDomain
+        );
+
+        const token =
+            await zohoOAuthService.exchangeCode(
+                code,
+                stateData.redirectUri,
+                accountsDomain
+            );
+
+        console.log(
+            "========== ZOHO TOKEN RESPONSE =========="
+        );
+
+        console.log(
+            JSON.stringify(token, null, 2)
+        );
+
+        console.log(
+            "========================================="
+        );
+
+        if (token.error) {
+            return res
+                .status(400)
+                .send(
+                    `Zoho token exchange failed: ${token.error}`
+                );
+        }
 
         if (!token.refresh_token) {
             return res.status(400).send(
-                "Zoho did not return a refresh token. Make sure access_type=offline is used and the requested scopes are approved."
+                "Zoho did not return a refresh token. " +
+                "Make sure access_type=offline is used and " +
+                "the requested scopes are approved."
             );
         }
 
-        // token.api_domain is authoritative. This fixes sandbox connections:
-        // sandbox tokens must continue using sandbox.zohoapis.* APIs.
         await zohoOAuthService.saveRefreshToken({
             organizationId: stateData.organizationId,
             refreshToken: token.refresh_token,
-            apiDomain: token.api_domain || stateData.requestedApiDomain,
-            scope: token.scope || process.env.ZOHO_SCOPES
+
+            apiDomain:
+                token.api_domain ||
+                stateData.requestedApiDomain,
+
+            scope:
+                token.scope ||
+                process.env.ZOHO_SCOPES
         });
 
         return res.send(
-            "Zoho CRM connected successfully for this organization and environment. You can close this window and return to the Authkey Workflow page."
+            "Zoho CRM connected successfully. " +
+            "You can close this window and return " +
+            "to the Authkey Workflow page."
         );
+
     } catch (error) {
-        console.error("Zoho OAuth callback error:", error.response?.data || error.message);
-        return res.status(error.statusCode || error.response?.status || 500)
-            .send(error.response?.data?.message || error.message);
+
+        console.error(
+            "========== ZOHO OAUTH ERROR =========="
+        );
+
+        console.error(
+            error.response?.data ||
+            error.message
+        );
+
+        console.error(
+            "======================================"
+        );
+
+        return res
+            .status(
+                error.statusCode ||
+                error.response?.status ||
+                500
+            )
+            .send(
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                error.message
+            );
     }
 };
 
