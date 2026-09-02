@@ -7,20 +7,32 @@ const CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
 const REDIRECT_URI = process.env.ZOHO_REDIRECT_URI;
 const SCOPES = process.env.ZOHO_SCOPES;
 
-function getAccountsUrl(apiDomain) {
-    const domain = String(apiDomain || process.env.ZOHO_ACCOUNTS_URL || "https://accounts.zoho.in").toLowerCase();
+function normalizeUrl(value) {
+    return String(value || "").trim().replace(/\/$/, "");
+}
 
-    if (domain.includes("zoho.eu")) return "https://accounts.zoho.eu";
-    if (domain.includes("zoho.com.au")) return "https://accounts.zoho.com.au";
-    if (domain.includes("zoho.jp")) return "https://accounts.zoho.jp";
-    if (domain.includes("zoho.sg")) return "https://accounts.zoho.sg";
-    if (domain.includes("zoho.in")) return "https://accounts.zoho.in";
+function getAccountsUrl(apiDomain) {
+    const domain = normalizeUrl(apiDomain).toLowerCase();
+
+    if (!domain) {
+        throw new Error("Zoho API domain is required to determine the correct Zoho Accounts server.");
+    }
+
+    if (domain.includes("zohoapis.eu") || domain.includes("zoho.eu")) return "https://accounts.zoho.eu";
+    if (domain.includes("zohoapis.com.au") || domain.includes("zoho.com.au")) return "https://accounts.zoho.com.au";
+    if (domain.includes("zohoapis.jp") || domain.includes("zoho.jp")) return "https://accounts.zoho.jp";
+    if (domain.includes("zohoapis.sg") || domain.includes("zoho.sg")) return "https://accounts.zoho.sg";
+    if (domain.includes("zohoapis.in") || domain.includes("zoho.in")) return "https://accounts.zoho.in";
 
     return "https://accounts.zoho.com";
 }
 
 function getCrmApiDomain(apiDomain) {
-    const domain = String(apiDomain || process.env.ZOHO_API_DOMAIN || process.env.ZOHO_CRM_BASE_URL || "").toLowerCase();
+    const domain = normalizeUrl(apiDomain).toLowerCase();
+
+    if (!domain) {
+        throw new Error("Zoho API domain is missing.");
+    }
 
     if (domain.includes("sandbox.zohoapis.eu")) return "https://sandbox.zohoapis.eu";
     if (domain.includes("sandbox.zohoapis.com.au")) return "https://sandbox.zohoapis.com.au";
@@ -36,11 +48,11 @@ function getCrmApiDomain(apiDomain) {
     if (domain.includes("developer.zohoapis.in")) return "https://developer.zohoapis.in";
     if (domain.includes("developer.zohoapis.com")) return "https://developer.zohoapis.com";
 
-    if (domain.includes("zohoapis.eu")) return "https://www.zohoapis.eu";
-    if (domain.includes("zoho.com.au") || domain.includes("zohoapis.com.au")) return "https://www.zohoapis.com.au";
-    if (domain.includes("zoho.jp") || domain.includes("zohoapis.jp")) return "https://www.zohoapis.jp";
-    if (domain.includes("zoho.sg") || domain.includes("zohoapis.sg")) return "https://www.zohoapis.sg";
-    if (domain.includes("zoho.in") || domain.includes("zohoapis.in")) return "https://www.zohoapis.in";
+    if (domain.includes("zohoapis.eu") || domain.includes("zoho.eu")) return "https://www.zohoapis.eu";
+    if (domain.includes("zohoapis.com.au") || domain.includes("zoho.com.au")) return "https://www.zohoapis.com.au";
+    if (domain.includes("zohoapis.jp") || domain.includes("zoho.jp")) return "https://www.zohoapis.jp";
+    if (domain.includes("zohoapis.sg") || domain.includes("zoho.sg")) return "https://www.zohoapis.sg";
+    if (domain.includes("zohoapis.in") || domain.includes("zoho.in")) return "https://www.zohoapis.in";
 
     return "https://www.zohoapis.com";
 }
@@ -54,11 +66,12 @@ function getEnvironmentFromApiDomain(apiDomain) {
 }
 
 function createState(organizationId, apiDomain) {
+    const requestedApiDomain = getCrmApiDomain(apiDomain);
     const payload = {
         organizationId: String(organizationId),
         redirectUri: REDIRECT_URI,
-        accountsDomain: getAccountsUrl(apiDomain),
-        requestedApiDomain: getCrmApiDomain(apiDomain),
+        requestedApiDomain,
+        accountsDomain: getAccountsUrl(requestedApiDomain),
         issuedAt: Date.now()
     };
 
@@ -81,13 +94,15 @@ function getOrganizationFromState(state) {
     if (!stateSecret) throw new Error("Zoho OAuth state secret is not configured.");
 
     const expectedSignature = crypto.createHmac("sha256", stateSecret).update(encoded).digest("base64url");
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
 
-    if (signature.length !== expectedSignature.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
         throw new Error("Invalid Zoho OAuth state.");
     }
 
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-    if (!payload.organizationId || !payload.redirectUri) {
+    if (!payload.organizationId || !payload.redirectUri || !payload.requestedApiDomain) {
         throw new Error("Invalid Zoho OAuth state payload.");
     }
 
@@ -98,8 +113,10 @@ function createAuthorizationUrl(organizationId, apiDomain) {
     if (!CLIENT_ID) throw new Error("ZOHO_CLIENT_ID is not configured.");
     if (!REDIRECT_URI) throw new Error("ZOHO_REDIRECT_URI is not configured.");
     if (!SCOPES) throw new Error("ZOHO_SCOPES is not configured.");
+    if (!apiDomain) throw new Error("Zoho API domain could not be detected from the current CRM organization.");
 
-    const accountsUrl = getAccountsUrl(apiDomain);
+    const requestedApiDomain = getCrmApiDomain(apiDomain);
+    const accountsUrl = getAccountsUrl(requestedApiDomain);
     const params = new URLSearchParams({
         response_type: "code",
         client_id: CLIENT_ID,
@@ -107,83 +124,41 @@ function createAuthorizationUrl(organizationId, apiDomain) {
         redirect_uri: REDIRECT_URI,
         access_type: "offline",
         prompt: "consent",
-        state: createState(organizationId, apiDomain)
+        state: createState(organizationId, requestedApiDomain)
     });
 
     return `${accountsUrl}/oauth/v2/auth?${params.toString()}`;
 }
 
-async function exchangeCode(
-    code,
-    redirectUri = REDIRECT_URI,
-    accountsDomain
-) {
-    if (!code) {
-        throw new Error(
-            "Zoho authorization code is required."
-        );
-    }
+async function exchangeCode(code, redirectUri = REDIRECT_URI, accountsDomain) {
+    if (!code) throw new Error("Zoho authorization code is required.");
+    if (!CLIENT_ID || !CLIENT_SECRET) throw new Error("Zoho OAuth client credentials are not configured.");
+    if (!accountsDomain) throw new Error("Zoho Accounts server is missing for authorization-code exchange.");
 
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-        throw new Error(
-            "Zoho OAuth client credentials are not configured."
-        );
-    }
-
-    const accountsUrl = accountsDomain
-        ? String(accountsDomain).replace(/\/$/, "")
-        : getAccountsUrl();
-
-    console.log(
-        "Exchanging OAuth code at:",
-        `${accountsUrl}/oauth/v2/token`
-    );
-
+    const accountsUrl = normalizeUrl(accountsDomain);
     const requestBody = new URLSearchParams({
         grant_type: "authorization_code",
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        code: code,
+        code,
         redirect_uri: redirectUri
     });
 
-    const response = await axios.post(
-        `${accountsUrl}/oauth/v2/token`,
-        requestBody.toString(),
-        {
-            headers: {
-                "Content-Type":
-                    "application/x-www-form-urlencoded"
-            }
-        }
-    );
-console.log("\n========== ZOHO REFRESH TOKEN RESPONSE ==========");
-console.log("Accounts URL:", accountsUrl);
-console.log(
-    "Response:",
-    JSON.stringify({
-        hasAccessToken: !!response.data.access_token,
-        api_domain: response.data.api_domain,
-        scope: response.data.scope,
-        expires_in: response.data.expires_in,
-        error: response.data.error
-    }, null, 2)
-);
-console.log("=================================================\n");
+    const response = await axios.post(`${accountsUrl}/oauth/v2/token`, requestBody.toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+    });
 
-if (!response.data.access_token) {
-    throw new Error(
-        `Zoho did not return an access token: ${
-            response.data.error || "Unknown error"
-        }`
-    );
-}
+    if (!response.data.access_token) {
+        throw new Error(`Zoho did not return an access token: ${response.data.error || "Unknown error"}`);
+    }
+
     return response.data;
 }
 
 async function saveRefreshToken({ organizationId, refreshToken, apiDomain, scope }) {
     if (!organizationId) throw new Error("organizationId is required.");
     if (!refreshToken) throw new Error("refreshToken is required.");
+    if (!apiDomain) throw new Error("Zoho did not return an API domain for this connection.");
 
     const resolvedApiDomain = getCrmApiDomain(apiDomain);
 
@@ -197,7 +172,7 @@ async function saveRefreshToken({ organizationId, refreshToken, apiDomain, scope
             scope: scope || "",
             connectedAt: new Date()
         },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
+        { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
     );
 }
 
@@ -205,9 +180,7 @@ async function getConnectionStatus(organizationId) {
     const connection = await ZohoConnection.findOne({ organizationId: String(organizationId) })
         .select("organizationId apiDomain environment scope connectedAt");
 
-    if (!connection) {
-        return { connected: false };
-    }
+    if (!connection) return { connected: false };
 
     return {
         connected: true,
@@ -229,10 +202,11 @@ async function getAccessToken(organizationId) {
     }
 
     if (!connection.refreshToken) throw new Error("Zoho refresh token is missing for this organization.");
+    if (!connection.apiDomain) throw new Error("Stored Zoho API domain is missing. Reconnect Zoho CRM.");
     if (!CLIENT_ID || !CLIENT_SECRET) throw new Error("Zoho OAuth client credentials are not configured.");
 
-    const apiDomain = getCrmApiDomain(connection.apiDomain);
-    const accountsUrl = getAccountsUrl(apiDomain);
+    const storedApiDomain = getCrmApiDomain(connection.apiDomain);
+    const accountsUrl = getAccountsUrl(storedApiDomain);
 
     const response = await axios.post(`${accountsUrl}/oauth/v2/token`, null, {
         params: {
@@ -243,53 +217,11 @@ async function getAccessToken(organizationId) {
         }
     });
 
-   const tokenApiDomain = getCrmApiDomain(
-    response.data.api_domain || apiDomain
-);
+    if (!response.data.access_token) {
+        throw new Error(`Unable to generate Zoho access token: ${response.data.error || "Unknown error"}`);
+    }
 
-console.log("\n========== ZOHO REFRESH RESPONSE ==========");
-console.log("Accounts URL:", accountsUrl);
-console.log(
-    "Has Access Token:",
-    Boolean(response.data.access_token)
-);
-console.log("API Domain:", response.data.api_domain);
-console.log("Scope:", response.data.scope);
-console.log("Full Response:", response.data);
-console.log("============================================\n");
-console.log("\n========== TESTING FRESH ZOHO TOKEN ==========");
-console.log("Token API Domain:", tokenApiDomain);
-console.log(
-    "Token Prefix:",
-    response.data.access_token?.substring(0, 20)
-);
-
-try {
-    const testResponse = await axios.get(
-        `${tokenApiDomain}/crm/v8/settings/modules`,
-        {
-            headers: {
-                Authorization: `Zoho-oauthtoken ${response.data.access_token}`
-            },
-            validateStatus: () => true
-        }
-    );
-
-    console.log("Test Status:", testResponse.status);
-    console.log(
-        "Test Response:",
-        JSON.stringify(testResponse.data, null, 2)
-    );
-    console.log(
-        "Response Headers:",
-        JSON.stringify(testResponse.headers, null, 2)
-    );
-
-} catch (testError) {
-    console.error("TOKEN TEST REQUEST ERROR:", testError.message);
-}
-
-console.log("==============================================\n");
+    const tokenApiDomain = getCrmApiDomain(response.data.api_domain || storedApiDomain);
 
     if (tokenApiDomain !== connection.apiDomain) {
         connection.apiDomain = tokenApiDomain;
@@ -311,6 +243,7 @@ module.exports = {
     saveRefreshToken,
     getConnectionStatus,
     getAccessToken,
+    getAccountsUrl,
     getCrmApiDomain,
     getEnvironmentFromApiDomain
 };
