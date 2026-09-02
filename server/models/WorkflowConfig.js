@@ -18,71 +18,16 @@ const WorkflowConfigSchema = new mongoose.Schema(
             required: true
         },
 
-        // UI label: Create / Edit / Delete
+        // Supported values: create, edit
         trigger: {
             type: String,
             required: true
         },
 
-        // Actual notification event: create / edit / delete / all
+        // Kept explicitly because Zoho workflow automation uses this value.
         triggerType: {
-            type: String
-        },
-
-        zohoModuleId: {
-            type: String
-        },
-
-        // Kept for compatibility with the previous implementation.
-        zohoWebhookId: {
-            type: String
-        },
-
-        zohoWorkflowRuleId: {
-            type: String
-        },
-
-        // Notification channel information
-        zohoChannelId: {
             type: String,
-            index: true
-        },
-
-        zohoNotificationToken: {
-            type: String,
-            select: false
-        },
-
-        zohoNotificationExpiry: {
-            type: Date
-        },
-
-        zohoNotificationEvent: {
-            type: String
-        },
-
-        zohoNotificationResourceId: {
-            type: String
-        },
-
-        zohoNotificationResourceName: {
-            type: String
-        },
-
-        zohoApiDomain: {
-            type: String,
-            default: "https://www.zohoapis.com"
-        },
-
-        webhookUrl: {
-            type: String
-        },
-
-        // Hash of the unique secret used by Zoho for this workflow webhook.
-        // The raw secret is never stored in MongoDB.
-        webhookSecretHash: {
-            type: String,
-            select: false
+            required: true
         },
 
         channel: {
@@ -91,7 +36,8 @@ const WorkflowConfigSchema = new mongoose.Schema(
         },
 
         fallbackChannel: {
-            type: String
+            type: String,
+            default: ""
         },
 
         templateId: {
@@ -100,7 +46,8 @@ const WorkflowConfigSchema = new mongoose.Schema(
         },
 
         templateName: {
-            type: String
+            type: String,
+            default: ""
         },
 
         recipientField: {
@@ -116,6 +63,22 @@ const WorkflowConfigSchema = new mongoose.Schema(
         enabled: {
             type: Boolean,
             default: true
+        },
+
+        // Zoho automation resources created for this workflow.
+        zohoModuleId: String,
+        zohoWebhookId: String,
+        zohoWorkflowRuleId: String,
+        zohoApiDomain: {
+            type: String,
+            default: "https://www.zohoapis.com"
+        },
+        webhookUrl: String,
+
+        // Each workflow has its own secret. Only its SHA-256 hash is stored.
+        webhookSecretHash: {
+            type: String,
+            select: false
         }
     },
     {
@@ -124,17 +87,8 @@ const WorkflowConfigSchema = new mongoose.Schema(
 );
 
 WorkflowConfigSchema.index(
-    {
-        organizationId: 1,
-        workflowName: 1
-    },
-    {
-        unique: true
-    }
+    { organizationId: 1, workflowName: 1 },
+    { unique: true }
 );
 
-module.exports =
-    mongoose.model(
-        "WorkflowConfig",
-        WorkflowConfigSchema
-    );
+module.exports = mongoose.model("WorkflowConfig", WorkflowConfigSchema);
