@@ -1,22 +1,53 @@
 let moduleFields = [];
+let zohoConnection = null;
 
 function setStatus(message) {
     document.getElementById("status").textContent = message || "";
 }
 
+function setConnectionUi(connection) {
+    const button = document.getElementById("connectZohoBtn");
+    const details = document.getElementById("zohoConnectionStatus");
+
+    if (!button || !details) return;
+
+    if (connection?.connected) {
+        button.textContent = "Reconnect Zoho CRM";
+        details.textContent = `Connected to ${connection.environment || "Zoho"} environment${connection.apiDomain ? ` (${connection.apiDomain})` : ""}.`;
+    } else {
+        button.textContent = "Connect Zoho CRM";
+        details.textContent = "Zoho CRM must be connected once before automatic workflow creation can use the Zoho API.";
+    }
+}
+
+async function checkZohoConnection() {
+    const organizationId = await getOrganizationId();
+    const result = await requestJson(
+        `/api/workflow/zoho/connection?organizationId=${encodeURIComponent(organizationId)}`
+    );
+
+    zohoConnection = result;
+    setConnectionUi(result);
+    return result;
+}
+
 async function connectZoho() {
     try {
-        const organizationId = await getOrganizationId();
-        const result = await requestJson(
-            `/api/workflow/zoho/oauth?organizationId=${encodeURIComponent(organizationId)}`
-        );
+        const context = await getOrganizationContext();
+        const params = new URLSearchParams({ organizationId: context.organizationId });
+
+        if (context.apiDomain) params.set("apiDomain", context.apiDomain);
+
+        const result = await requestJson(`/api/workflow/zoho/oauth?${params.toString()}`);
 
         if (!result.authorizationUrl) {
             throw new Error("Zoho authorization URL was not generated.");
         }
 
         window.open(result.authorizationUrl, "_blank");
-        setStatus("Complete Zoho authorization in the opened window, then return here and reload this page.");
+        setStatus(
+            "Complete Zoho authorization in the opened window. The connection is environment-specific, so your Sandbox and Production organizations are connected separately. Return here and reload this page."
+        );
     } catch (error) {
         setStatus(error.message);
     }
@@ -84,12 +115,19 @@ function populateRecipientFields() {
 async function initializeWorkflow() {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
+
+        const connection = await checkZohoConnection();
+        if (!connection.connected) {
+            setStatus("Connect this Zoho organization once to create workflows automatically.");
+            return;
+        }
+
         await loadModules();
         await loadModuleFields();
         await loadTemplates();
         await previewWorkflow();
     } catch (error) {
-        setStatus(`${error.message} Click 'Connect Zoho CRM' if this organization has not been authorized yet.`);
+        setStatus(error.message);
     }
 }
 
