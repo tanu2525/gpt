@@ -1,13 +1,38 @@
-async function getOrganizationId() {
+async function getOrganizationContext() {
     const response = await ZOHO.CRM.CONFIG.getOrgInfo();
     const organization = Array.isArray(response?.org) ? response.org[0] : response?.org;
-    const organizationId = organization?.id || organization?.org_id || organization?.organization_id;
+
+    const organizationId =
+        organization?.id ||
+        organization?.org_id ||
+        organization?.organization_id;
 
     if (!organizationId) {
         throw new Error("Unable to determine the Zoho organization ID.");
     }
 
-    return String(organizationId);
+    const apiDomain =
+        organization?.api_domain ||
+        organization?.apiDomain ||
+        organization?.crm_api_domain ||
+        organization?.crmApiDomain ||
+        "";
+
+    const environment =
+        organization?.type ||
+        organization?.environment ||
+        "";
+
+    return {
+        organizationId: String(organizationId),
+        apiDomain: String(apiDomain || ""),
+        environment: String(environment || "")
+    };
+}
+
+async function getOrganizationId() {
+    const context = await getOrganizationContext();
+    return context.organizationId;
 }
 
 function isAuthkeyMissingError(error) {
@@ -43,21 +68,12 @@ function showAuthkeyRequiredMessage() {
                     box-shadow:0 8px 24px rgba(15,23,42,.08);
                 "
             >
-                <div style="font-size:40px;margin-bottom:12px;">
-                    🔐
-                </div>
-
-                <h2 style="margin:0 0 12px;color:#1f2937;">
-                    Authkey Required
-                </h2>
-
+                <div style="font-size:40px;margin-bottom:12px;">🔐</div>
+                <h2 style="margin:0 0 12px;color:#1f2937;">Authkey Required</h2>
                 <p style="margin:0;color:#4b5563;line-height:1.7;">
-                    An Authkey has not been configured for this Zoho CRM
-                    organization.
+                    An Authkey has not been configured for this Zoho CRM organization.
                     <br><br>
-                    Please open the <strong>Authkey Settings</strong> tab
-                    from the Zoho CRM navigation and add a valid Authkey
-                    before using this feature.
+                    Please open the <strong>Authkey Settings</strong> tab and add a valid Authkey before using this feature.
                 </p>
             </div>
         </div>
