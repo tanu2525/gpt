@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const zohoConnectionSchema = new mongoose.Schema(
     {
-        // The Zoho SDK organization ID identifies the installed organization.
-        // Sandbox and Production can have different IDs and therefore get
-        // separate connection records.
+        // The Zoho organization ID identifies the installed CRM organization.
+        // Sandbox and Production organizations use separate IDs and therefore
+        // have separate OAuth connection records.
         organizationId: {
             type: String,
             required: true,
@@ -16,12 +16,11 @@ const zohoConnectionSchema = new mongoose.Schema(
             required: true,
             select: false
         },
-        // Returned by Zoho during OAuth. This is important because sandbox
-        // tokens must use sandbox.zohoapis.* instead of production APIs.
+        // This value is returned by Zoho during OAuth and must never be
+        // replaced with a hardcoded data-center URL.
         apiDomain: {
             type: String,
-            required: true,
-            default: "https://www.zohoapis.in"
+            required: true
         },
         environment: {
             type: String,
