@@ -118,3 +118,4 @@ async function loadTemplates({
 
     return templates;
 }
+

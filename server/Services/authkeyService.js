@@ -10,11 +10,6 @@ async function credentialsFor(organizationId) {
     return decrypt(credentials);
 }
 
-/**
- * Validate an Authkey without sending a customer message.
- * Authkey exposes the account balance endpoint, which requires a valid
- * account authkey and therefore works well as a lightweight credential check.
- */
 async function validateAuthkey(authkey) {
     const value = String(authkey || "").trim();
 
