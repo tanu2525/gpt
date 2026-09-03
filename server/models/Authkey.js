@@ -5,7 +5,8 @@ const authkeySchema = new mongoose.Schema(
         organizationId: {
             type: String,
             required: true,
-            unique: true
+            unique: true,
+            index: true
         },
 
         encryptedCredentials: {
@@ -22,22 +23,7 @@ const authkeySchema = new mongoose.Schema(
         },
         lastValidatedAt: Date,
 
-        // Zoho CRM OAuth connection.
-        // Refresh token is stored so the backend can generate
-        // short-lived access tokens without asking Postman/UI for one.
-        zohoRefreshToken: {
-            type: String,
-            select: false
-        },
-        zohoApiDomain: {
-            type: String,
-            default: "https://www.zohoapis.com"
-        },
-        zohoScope: {
-            type: String,
-            default: ""
-        },
-
+        // Zoho OAuth credentials are intentionally stored only in ZohoConnection.
         fieldMappings: {
             type: Map,
             of: String,
