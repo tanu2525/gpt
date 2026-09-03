@@ -6,6 +6,14 @@ const SUPPORTED_MODULES = new Set([
     "Accounts"
 ]);
 
+const DEFAULT_MAPPINGS = [
+    { zohoField: "Mobile", payloadPath: "mobile", label: "Mobile" },
+    { zohoField: "Phone", payloadPath: "phone", label: "Phone" },
+    { zohoField: "Email", payloadPath: "email", label: "Email" },
+    { zohoField: "First_Name", payloadPath: "first_name", label: "First Name" },
+    { zohoField: "Last_Name", payloadPath: "last_name", label: "Last Name" }
+];
+
 function setStatus(message, isError = false) {
     const status = document.getElementById("status");
     status.textContent = message;
@@ -61,7 +69,11 @@ async function syncModule() {
         const result = await requestJson("/api/zoho/authkey/sync-module", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ organizationId, module: moduleName })
+            body: JSON.stringify({
+                organizationId,
+                module: moduleName,
+                mappings: DEFAULT_MAPPINGS
+            })
         });
 
         document.getElementById("summary").hidden = false;
