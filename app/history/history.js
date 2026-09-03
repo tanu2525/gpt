@@ -30,6 +30,10 @@ async function loadHistory() {
     renderTable(logs);
 }
 
+function getProviderResponse(log) {
+    return log.providerResponse || log.payload || {};
+}
+
 async function viewDetails(id) {
     const log = await requestJson(`/api/history/detail/${encodeURIComponent(id)}`);
 
@@ -41,11 +45,12 @@ async function viewDetails(id) {
 <tr><td>Template</td><td>${escapeHtml(log.templateName || log.templateId)}</td></tr>
 <tr><td>Template ID</td><td>${escapeHtml(log.templateId)}</td></tr>
 <tr><td>Status</td><td>${escapeHtml(log.status)}</td></tr>
+<tr><td>Provider Status</td><td>${escapeHtml(log.providerStatus || "-")}</td></tr>
 <tr><td>Provider ID</td><td>${escapeHtml(log.providerMessageId || "-")}</td></tr>
 <tr><td>Created</td><td>${new Date(log.createdAt).toLocaleString()}</td></tr>
 </table>
 <h4>Provider Response</h4>
-<pre>${escapeHtml(JSON.stringify(log.payload, null, 2))}</pre>`;
+<pre>${escapeHtml(JSON.stringify(getProviderResponse(log), null, 2))}</pre>`;
 
     document.getElementById("detailModal").style.display = "flex";
 }
@@ -67,7 +72,7 @@ async function showDetails(event, id) {
 <b>Status:</b> ${escapeHtml(log.status)}<br>
 <b>Provider ID:</b> ${escapeHtml(log.providerMessageId || "-")}<br>
 <hr>
-<pre style="white-space:pre-wrap;font-size:11px">${escapeHtml(JSON.stringify(log.payload, null, 2))}</pre>`;
+<pre style="white-space:pre-wrap;font-size:11px">${escapeHtml(JSON.stringify(getProviderResponse(log), null, 2))}</pre>`;
 
     tooltip.style.display = "block";
     tooltip.style.left = (event.pageX + 10) + "px";
