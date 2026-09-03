@@ -3,6 +3,7 @@ const axios = require("axios");
 const Authkey = require("../models/Authkey");
 const zohoOAuthService = require("./zohoOAuthService");
 const { decrypt } = require("../utils/crypto");
+const { getBulkConcurrency } = require("../utils/requestValidation");
 
 const AUTHKEY_ADD_LIST_URL =
     process.env.AUTHKEY_ADD_LIST_DATA_URL ||
@@ -106,13 +107,22 @@ function mapRecordToAuthkey(record, moduleName, authkey) {
     };
 }
 
-async function fetchRecordsPage(accessToken, apiDomain, moduleName, params) {
-    const baseUrl = String(apiDomain || "https://www.zohoapis.com")
+function getZohoCrmBaseUrl(apiDomain) {
+    const baseUrl = String(apiDomain || "")
+        .trim()
         .replace(/\/crm\/v\d+$/i, "")
         .replace(/\/$/, "");
 
+    if (!baseUrl) {
+        throw new Error("Zoho API domain is required for bulk record fetching.");
+    }
+
+    return `${baseUrl}/crm/v8`;
+}
+
+async function fetchRecordsPage(accessToken, apiDomain, moduleName, params) {
     const response = await axios.get(
-        `${baseUrl}/crm/v8/${encodeURIComponent(moduleName)}`,
+        `${getZohoCrmBaseUrl(apiDomain)}/${encodeURIComponent(moduleName)}`,
         {
             params,
             headers: {
@@ -165,8 +175,6 @@ async function fetchAllRecords(organizationId, moduleName) {
 
         page += 1;
 
-        // Zoho allows normal page pagination only through the first 2000 records.
-        // Once page 10 has been consumed, the response must provide next_page_token.
         if (page > 10) {
             break;
         }
@@ -225,9 +233,10 @@ async function syncModule({ organizationId, module }) {
         failures: []
     };
 
-    // Authkey addlistdata.php accepts one mobile record per request, so one click
-    // triggers the complete module sync while requests are sent in small batches.
-    const concurrency = Number(process.env.AUTHKEY_BULK_CONCURRENCY || 5);
+    const concurrency = getBulkConcurrency(
+        process.env.AUTHKEY_BULK_CONCURRENCY,
+        5
+    );
 
     for (let start = 0; start < records.length; start += concurrency) {
         const batch = records.slice(start, start + concurrency);
