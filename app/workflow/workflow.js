@@ -1,5 +1,6 @@
 let moduleFields = [];
 let zohoConnection = null;
+const lookupFieldCache = new Map();
 
 function setStatus(message) {
     document.getElementById("status").textContent = message || "";
@@ -83,6 +84,7 @@ async function loadModuleFields() {
     const module = document.getElementById("module").value;
     const result = await requestJson(`/api/workflow/zoho/fields?organizationId=${encodeURIComponent(organizationId)}&module=${encodeURIComponent(module)}`);
     moduleFields = result.fields || [];
+    lookupFieldCache.clear();
     populateRecipientFields();
     await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
 }
@@ -113,6 +115,35 @@ function populateRecipientFields() {
     }
 }
 
+function getLookupModule(field) {
+    return field?.lookup?.module?.api_name ||
+        field?.lookup?.module?.apiName ||
+        field?.lookup?.module ||
+        field?.associated_module?.module?.api_name ||
+        field?.associated_module?.module ||
+        field?.connected_details?.module?.api_name ||
+        field?.connected_details?.module ||
+        "";
+}
+
+async function getLookupFields(field) {
+    const relatedModule = getLookupModule(field);
+    if (!relatedModule) return [];
+
+    if (lookupFieldCache.has(relatedModule)) {
+        return lookupFieldCache.get(relatedModule);
+    }
+
+    const organizationId = await getOrganizationId();
+    const result = await requestJson(
+        `/api/workflow/zoho/fields?organizationId=${encodeURIComponent(organizationId)}&module=${encodeURIComponent(relatedModule)}`
+    );
+
+    const fields = result.fields || [];
+    lookupFieldCache.set(relatedModule, fields);
+    return fields;
+}
+
 async function initializeWorkflow() {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
@@ -137,7 +168,9 @@ ZOHO.embeddedApp.on("PageLoad", initializeWorkflow);
 async function saveWorkflow() {
     const variables = {};
     document.querySelectorAll("#variablesContainer select").forEach(select => {
-        variables[select.id.replace("map_", "")] = select.value;
+        if (select.value) {
+            variables[select.id.replace("map_", "")] = select.value;
+        }
     });
 
     const template = document.getElementById("templateSelect").selectedOptions[0];
@@ -147,7 +180,6 @@ async function saveWorkflow() {
         module: document.getElementById("module").value,
         trigger: document.getElementById("trigger").value,
         channel: document.getElementById("channel").value,
-        fallbackChannel: document.getElementById("fallbackChannel").value,
         templateId: document.getElementById("templateSelect").value,
         templateName: template ? template.textContent : "",
         recipientField: document.getElementById("recipientField").value,
@@ -164,7 +196,9 @@ async function saveWorkflow() {
         });
 
         setStatus(result.zoho?.webhookUrl
-            ? "Workflow saved and Zoho webhook + workflow rule configured successfully."
+            ? (result.zoho.updated
+                ? "Workflow updated and Zoho automation recreated successfully."
+                : "Workflow saved and Zoho webhook + workflow rule configured successfully.")
             : "Workflow saved successfully.");
     } catch (error) {
         setStatus(error.message);
@@ -175,6 +209,12 @@ async function renderMappings(body = "") {
     const container = document.getElementById("variablesContainer");
     container.innerHTML = "";
     const variables = getTemplateVariables(body);
+
+    const lookupMappings = [];
+    for (const field of moduleFields) {
+        if (String(field.data_type || "").toLowerCase() !== "lookup") continue;
+        lookupMappings.push({ field, fields: await getLookupFields(field) });
+    }
 
     variables.forEach(variable => {
         const div = document.createElement("div");
@@ -189,6 +229,15 @@ async function renderMappings(body = "") {
             option.value = field.api_name;
             option.textContent = `${field.field_label || field.api_name} (${field.api_name})`;
             select.appendChild(option);
+        });
+
+        lookupMappings.forEach(({ field: lookupField, fields }) => {
+            fields.forEach(relatedField => {
+                const option = document.createElement("option");
+                option.value = `${lookupField.api_name}.${relatedField.api_name}`;
+                option.textContent = `${lookupField.field_label || lookupField.api_name} → ${relatedField.field_label || relatedField.api_name}`;
+                select.appendChild(option);
+            });
         });
 
         div.appendChild(label);
@@ -206,7 +255,11 @@ document.getElementById("channel").addEventListener("change", () => {
     loadTemplates().then(previewWorkflow).catch(error => setStatus(error.message));
 });
 
-document.getElementById("templateSelect").addEventListener("change", previewWorkflow);
+document.getElementById("templateSelect").addEventListener("change", () => {
+    renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "")
+        .then(previewWorkflow)
+        .catch(error => setStatus(error.message));
+});
 document.getElementById("connectZohoBtn").addEventListener("click", connectZoho);
 document.getElementById("saveBtn").addEventListener("click", saveWorkflow);
 ZOHO.embeddedApp.init();
