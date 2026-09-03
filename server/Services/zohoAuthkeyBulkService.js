@@ -19,41 +19,17 @@ const MODULE_CONFIG = {
     Leads: {
         listNameEnv: "AUTHKEY_ZOHO_LEADS_LIST_NAME",
         defaultListName: "Zoho_Leads",
-        mobileFields: ["Mobile", "Phone"],
-        billingFields: [
-            "Billing_City",
-            "Billing_State",
-            "Billing_Country",
-            "Billing_Street",
-            "City",
-            "State",
-            "Country"
-        ]
+        mobileFields: ["Mobile", "Phone"]
     },
     Contacts: {
         listNameEnv: "AUTHKEY_ZOHO_CONTACTS_LIST_NAME",
         defaultListName: "Zoho_Contacts",
-        mobileFields: ["Mobile", "Phone"],
-        billingFields: [
-            "Mailing_City",
-            "Mailing_State",
-            "Mailing_Country",
-            "Mailing_Street",
-            "City",
-            "State",
-            "Country"
-        ]
+        mobileFields: ["Mobile", "Phone"]
     },
     Accounts: {
         listNameEnv: "AUTHKEY_ZOHO_ACCOUNTS_LIST_NAME",
         defaultListName: "Zoho_Accounts",
-        mobileFields: ["Phone", "Mobile"],
-        billingFields: [
-            "Billing_City",
-            "Billing_State",
-            "Billing_Country",
-            "Billing_Street"
-        ]
+        mobileFields: ["Phone", "Mobile"]
     }
 };
 
@@ -94,17 +70,71 @@ function getListName(moduleName) {
     return process.env[config.listNameEnv] || config.defaultListName;
 }
 
-function mapRecordToAuthkey(record, moduleName, authkey) {
-    const config = MODULE_CONFIG[moduleName];
+function normalizeMappings(mappings) {
+    const seen = new Set();
 
-    return {
+    return (Array.isArray(mappings) ? mappings : [])
+        .map(mapping => ({
+            zohoField: String(mapping?.zohoField || "").trim(),
+            payloadPath: String(mapping?.payloadPath || "").trim(),
+            label: String(mapping?.label || "").trim()
+        }))
+        .filter(mapping => {
+            if (!mapping.zohoField || !mapping.payloadPath) return false;
+
+            const key = `${mapping.zohoField}:${mapping.payloadPath}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+function setByPath(target, path, value) {
+    const parts = String(path)
+        .split(".")
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (!parts.length) return;
+
+    let current = target;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+        const part = parts[index];
+        if (!current[part] || typeof current[part] !== "object") {
+            current[part] = {};
+        }
+        current = current[part];
+    }
+
+    current[parts[parts.length - 1]] = value;
+}
+
+function mapRecordToAuthkey(record, moduleName, authkey, mappings = []) {
+    const config = MODULE_CONFIG[moduleName];
+    const normalizedMappings = normalizeMappings(mappings);
+
+    const payload = {
         authkey,
         list_name: getListName(moduleName),
         source: "Zoho",
-        country_code: process.env.DEFAULT_COUNTRY_CODE || "91",
-        mobile: getFirstValue(record, config.mobileFields),
-        billing: getFirstValue(record, config.billingFields)
+        country_code: process.env.DEFAULT_COUNTRY_CODE || "91"
     };
+
+    for (const mapping of normalizedMappings) {
+        const value = record?.[mapping.zohoField];
+
+        if (value === undefined || value === null || value === "") {
+            continue;
+        }
+
+        setByPath(payload, mapping.payloadPath, value);
+    }
+
+    if (!payload.mobile) {
+        payload.mobile = getFirstValue(record, config.mobileFields);
+    }
+
+    return payload;
 }
 
 function getZohoCrmBaseUrl(apiDomain) {
@@ -144,12 +174,9 @@ async function fetchAllRecords(organizationId, moduleName) {
     let pageToken = null;
 
     while (true) {
-        const params = {
-            per_page: 200,
-            ...(pageToken
-                ? { page: 10, page_token: pageToken }
-                : { page })
-        };
+        const params = pageToken
+            ? { page_token: pageToken }
+            : { per_page: 200, page };
 
         const response = await fetchRecordsPage(
             accessToken,
@@ -174,10 +201,6 @@ async function fetchAllRecords(organizationId, moduleName) {
         }
 
         page += 1;
-
-        if (page > 10) {
-            break;
-        }
     }
 
     return records;
@@ -210,12 +233,21 @@ async function sendToAuthkey(payload) {
     return response.data;
 }
 
-async function syncModule({ organizationId, module }) {
+async function syncModule({ organizationId, module, mappings = [] }) {
     assertSupportedModule(module);
 
     if (!organizationId) {
         throw Object.assign(
             new Error("Zoho organization ID is required."),
+            { statusCode: 400 }
+        );
+    }
+
+    const normalizedMappings = normalizeMappings(mappings);
+
+    if (!normalizedMappings.length) {
+        throw Object.assign(
+            new Error("Select at least one Zoho field to send to Authkey."),
             { statusCode: 400 }
         );
     }
@@ -226,6 +258,7 @@ async function syncModule({ organizationId, module }) {
     const summary = {
         success: true,
         module,
+        mappings: normalizedMappings,
         total: records.length,
         sent: 0,
         skipped: 0,
@@ -243,7 +276,12 @@ async function syncModule({ organizationId, module }) {
 
         const results = await Promise.all(
             batch.map(async record => {
-                const payload = mapRecordToAuthkey(record, module, authkey);
+                const payload = mapRecordToAuthkey(
+                    record,
+                    module,
+                    authkey,
+                    normalizedMappings
+                );
 
                 if (!payload.mobile) {
                     return {
@@ -291,5 +329,6 @@ async function syncModule({ organizationId, module }) {
 module.exports = {
     syncModule,
     fetchAllRecords,
-    mapRecordToAuthkey
+    mapRecordToAuthkey,
+    normalizeMappings
 };
