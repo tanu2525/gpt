@@ -1,15 +1,32 @@
-async function requestJson(url, options = {}) {
-    const response = await fetch(getApiUrl(url), options);
-    let data;
+const AUTHKEY_EXTENSION_API_BASE_URL =
+    window.AUTHKEY_EXTENSION_API_BASE_URL ||
+    "https://augmented-carefully-unseeing.ngrok-free.dev";
 
-    try {
-        data = await response.json();
-    } catch {
-        throw new Error("The server returned an invalid response.");
+async function requestJson(url, options = {}) {
+    const apiUrl = getApiUrl(url);
+
+    console.log("Authkey API request:", apiUrl);
+
+    const response = await fetch(apiUrl, options);
+    const responseText = await response.text();
+    let data = null;
+
+    if (responseText) {
+        try {
+            data = JSON.parse(responseText);
+        } catch {
+            throw new Error(
+                `The server returned an invalid response (HTTP ${response.status}).`
+            );
+        }
     }
 
     if (!response.ok) {
-        throw new Error(data.message || data.error || "The request could not be completed.");
+        throw new Error(
+            data?.message ||
+            data?.error ||
+            `The request could not be completed (HTTP ${response.status}).`
+        );
     }
 
     return data;
@@ -20,18 +37,13 @@ function getApiUrl(url) {
         return url;
     }
 
-    const match = window.location.pathname.match(/^(.+)\/app(?:\/|$)/);
+    const endpoint = url.startsWith("/") ? url : `/${url}`;
 
-    if (!match) {
-        return url;
+    if (AUTHKEY_EXTENSION_API_BASE_URL) {
+        return `${String(AUTHKEY_EXTENSION_API_BASE_URL).replace(/\/$/, "")}${endpoint}`;
     }
-    const baseUrl = window.location.origin + match[1];
 
-    const endpoint = url.startsWith("/")
-        ? url
-        : `/${url}`;
-
-    return baseUrl + endpoint;
+    return window.location.origin + endpoint;
 }
 
 async function getChannelTemplates(channel) {
