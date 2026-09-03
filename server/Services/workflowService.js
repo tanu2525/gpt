@@ -14,17 +14,25 @@ function getRecordId(payload = {}) {
     );
 }
 
+function getCrmBaseUrl(apiDomain) {
+    const normalized = String(apiDomain || "").trim()
+        .replace(/\/$/, "")
+        .replace(/\/crm\/v\d+$/i, "");
+
+    if (!normalized) {
+        throw new Error("Zoho API domain is required for CRM requests.");
+    }
+
+    return `${normalized}/crm/v8`;
+}
+
 async function fetchRecord(recordId, module, accessToken, apiDomain) {
     if (!recordId) throw new Error("Zoho recordId is required.");
     if (!module) throw new Error("Zoho module is required.");
     if (!accessToken) throw new Error("Zoho OAuth access token is required.");
 
-    const baseUrl = String(apiDomain || "https://www.zohoapis.in")
-        .replace(/\/$/, "")
-        .replace(/\/crm\/v\d+$/i, "") + "/crm/v8";
-
     const response = await axios.get(
-        `${baseUrl}/${encodeURIComponent(module)}/${encodeURIComponent(recordId)}`,
+        `${getCrmBaseUrl(apiDomain)}/${encodeURIComponent(module)}/${encodeURIComponent(recordId)}`,
         {
             headers: {
                 Authorization: `Zoho-oauthtoken ${accessToken}`
@@ -35,11 +43,16 @@ async function fetchRecord(recordId, module, accessToken, apiDomain) {
     return response.data?.data?.[0] || null;
 }
 
-async function resolveAccessToken(organizationId, accessToken) {
+async function resolveAccessToken(organizationId, accessToken, apiDomain) {
     if (accessToken) {
+        const explicitApiDomain = String(apiDomain || process.env.ZOHO_API_DOMAIN || "").trim();
+        if (!explicitApiDomain) {
+            throw new Error("Zoho API domain is required when an access token is supplied directly.");
+        }
+
         return {
             accessToken,
-            apiDomain: process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in"
+            apiDomain: explicitApiDomain
         };
     }
 
@@ -58,6 +71,10 @@ function getLookupModule(field) {
     );
 }
 
+async function getFieldMetadata(accessToken, module, apiDomain) {
+    return zohoCrmService.getFields(accessToken, module, apiDomain);
+}
+
 async function resolveRecipient({
     record,
     recipientField,
@@ -69,29 +86,18 @@ async function resolveRecipient({
     const value = record?.[recipientField];
 
     if (typeof value === "string" || typeof value === "number") {
-        return String(value);
+        return String(value).trim() || null;
     }
 
     if (!value || typeof value !== "object" || !value.id) {
         return null;
     }
 
-    // Lookup field, e.g. Deals.Contact_Name.
-    const fields = await zohoCrmService.getFields(
-        accessToken,
-        module,
-        apiDomain
-    );
-
-    const metadata = fields.find(
-        field => field.api_name === recipientField
-    );
-
+    const fields = await getFieldMetadata(accessToken, module, apiDomain);
+    const metadata = fields.find(field => field.api_name === recipientField);
     const relatedModule = getLookupModule(metadata);
 
-    if (!relatedModule) {
-        return null;
-    }
+    if (!relatedModule) return null;
 
     const relatedRecord = await fetchRecord(
         value.id,
@@ -100,19 +106,95 @@ async function resolveRecipient({
         apiDomain
     );
 
-    if (!relatedRecord) {
-        return null;
-    }
+    if (!relatedRecord) return null;
 
-    return String(channel).toLowerCase() === "email"
+    const resolved = String(channel).toLowerCase() === "email"
         ? relatedRecord.Email
         : relatedRecord.Mobile || relatedRecord.Phone;
+
+    return resolved ? String(resolved).trim() : null;
+}
+
+async function resolveMappedValue({
+    record,
+    fieldPath,
+    accessToken,
+    apiDomain,
+    module,
+    fieldMetadata
+}) {
+    const normalizedPath = String(fieldPath || "").trim();
+    if (!normalizedPath) return "";
+
+    const [rootField, ...rest] = normalizedPath.split(".");
+    const directValue = record?.[rootField];
+
+    if (!rest.length) {
+        if (directValue === null || directValue === undefined) return "";
+        if (typeof directValue === "object") {
+            return String(directValue.name || directValue.id || "");
+        }
+        return String(directValue);
+    }
+
+    if (!directValue || typeof directValue !== "object" || !directValue.id) {
+        return "";
+    }
+
+    const metadata = fieldMetadata.find(field => field.api_name === rootField);
+    const relatedModule = getLookupModule(metadata);
+    if (!relatedModule) return "";
+
+    const relatedRecord = await fetchRecord(
+        directValue.id,
+        relatedModule,
+        accessToken,
+        apiDomain
+    );
+
+    if (!relatedRecord) return "";
+
+    let value = relatedRecord;
+    for (const part of rest) {
+        value = value?.[part];
+    }
+
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") return String(value.name || value.id || "");
+    return String(value);
+}
+
+async function resolveVariables({ workflow, record, accessToken, apiDomain }) {
+    const mappings = Object.entries(workflow.variables || {});
+    if (!mappings.length) return {};
+
+    const fieldMetadata = await getFieldMetadata(
+        accessToken,
+        workflow.module,
+        apiDomain
+    );
+
+    const variables = {};
+
+    for (const [name, fieldPath] of mappings) {
+        variables[name] = await resolveMappedValue({
+            record,
+            fieldPath,
+            accessToken,
+            apiDomain,
+            module: workflow.module,
+            fieldMetadata
+        });
+    }
+
+    return variables;
 }
 
 exports.send = async function(data) {
     const {
         organizationId,
         accessToken,
+        apiDomain,
         recordId,
         module,
         channel,
@@ -121,7 +203,7 @@ exports.send = async function(data) {
         variables
     } = data;
 
-    const tokenData = await resolveAccessToken(organizationId, accessToken);
+    const tokenData = await resolveAccessToken(organizationId, accessToken, apiDomain);
     const record = await fetchRecord(
         recordId,
         module,
@@ -162,7 +244,7 @@ exports.trigger = async function(workflowId, payload = {}) {
     const workflow = await WorkflowConfig.findOne({
         _id: workflowId,
         enabled: true
-    }).select("+zohoNotificationToken");
+    });
 
     if (!workflow) {
         const error = new Error("Workflow was not found or is disabled.");
@@ -171,8 +253,13 @@ exports.trigger = async function(workflowId, payload = {}) {
     }
 
     const recordId = getRecordId(payload);
-    const tokenData = await resolveAccessToken(workflow.organizationId);
+    if (!recordId) {
+        const error = new Error("Zoho workflow payload does not contain a record ID.");
+        error.statusCode = 400;
+        throw error;
+    }
 
+    const tokenData = await resolveAccessToken(workflow.organizationId);
     const record = await fetchRecord(
         recordId,
         workflow.module,
@@ -203,14 +290,14 @@ exports.trigger = async function(workflowId, payload = {}) {
         throw error;
     }
 
-    const variables = Object.fromEntries(
-        Object.entries(workflow.variables || {}).map(([name, field]) => [
-            name,
-            record[field] ?? ""
-        ])
-    );
+    const variables = await resolveVariables({
+        workflow,
+        record,
+        accessToken: tokenData.accessToken,
+        apiDomain: tokenData.apiDomain
+    });
 
-    const message = {
+    const sent = await messageService.sendMessage({
         organizationId: workflow.organizationId,
         channel: String(workflow.channel).toLowerCase(),
         recipient,
@@ -219,38 +306,16 @@ exports.trigger = async function(workflowId, payload = {}) {
         recordId,
         module: workflow.module,
         variables
+    });
+
+    return {
+        workflowId: workflow._id,
+        logId: sent.log?._id,
+        channel: workflow.channel,
+        status: sent.log?.status || "accepted"
     };
-
-    try {
-        const sent = await messageService.sendMessage(message);
-
-        return {
-            workflowId: workflow._id,
-            logId: sent.log?._id,
-            channel: workflow.channel
-        };
-    } catch (primaryError) {
-        if (
-            !workflow.fallbackChannel ||
-            String(workflow.fallbackChannel).toLowerCase() ===
-                String(workflow.channel).toLowerCase()
-        ) {
-            throw primaryError;
-        }
-
-        const sent = await messageService.sendMessage({
-            ...message,
-            channel: workflow.fallbackChannel
-        });
-
-        return {
-            workflowId: workflow._id,
-            logId: sent.log?._id,
-            channel: workflow.fallbackChannel,
-            fallbackUsed: true,
-            primaryError: primaryError.message
-        };
-    }
 };
 
 exports.fetchRecord = fetchRecord;
+exports.resolveMappedValue = resolveMappedValue;
+exports.resolveVariables = resolveVariables;
