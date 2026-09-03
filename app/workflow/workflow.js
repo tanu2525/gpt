@@ -37,6 +37,7 @@ async function connectZoho() {
         const params = new URLSearchParams({ organizationId: context.organizationId });
 
         if (context.apiDomain) params.set("apiDomain", context.apiDomain);
+        if (context.countryCode) params.set("countryCode", context.countryCode);
 
         const result = await requestJson(`/api/workflow/zoho/oauth?${params.toString()}`);
 
