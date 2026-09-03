@@ -23,8 +23,9 @@ function getAccountsUrl(apiDomain) {
     if (domain.includes("zohoapis.jp") || domain.includes("zoho.jp")) return "https://accounts.zoho.jp";
     if (domain.includes("zohoapis.sg") || domain.includes("zoho.sg")) return "https://accounts.zoho.sg";
     if (domain.includes("zohoapis.in") || domain.includes("zoho.in")) return "https://accounts.zoho.in";
+    if (domain.includes("zohoapis.com") || domain.includes("zoho.com")) return "https://accounts.zoho.com";
 
-    return "https://accounts.zoho.com";
+    throw new Error(`Unable to determine the Zoho Accounts server from API domain: ${apiDomain}`);
 }
 
 function getCrmApiDomain(apiDomain) {
@@ -53,8 +54,9 @@ function getCrmApiDomain(apiDomain) {
     if (domain.includes("zohoapis.jp") || domain.includes("zoho.jp")) return "https://www.zohoapis.jp";
     if (domain.includes("zohoapis.sg") || domain.includes("zoho.sg")) return "https://www.zohoapis.sg";
     if (domain.includes("zohoapis.in") || domain.includes("zoho.in")) return "https://www.zohoapis.in";
+    if (domain.includes("zohoapis.com") || domain.includes("zoho.com")) return "https://www.zohoapis.com";
 
-    return "https://www.zohoapis.com";
+    throw new Error(`Unable to determine the Zoho CRM API domain from: ${apiDomain}`);
 }
 
 function getEnvironmentFromApiDomain(apiDomain) {
