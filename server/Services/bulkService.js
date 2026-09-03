@@ -1,114 +1,111 @@
-const messageService =
-require("./messageService");
-async function send(data){
+const messageService = require("./messageService");
+const { getBulkConcurrency } = require("../utils/requestValidation");
 
+async function sendOne({
+    lead,
+    organizationId,
+    channel,
+    templateId,
+    templateName,
+    variables
+}) {
+    const recipient = String(channel).toLowerCase() === "email"
+        ? lead.Email
+        : (lead.Mobile || lead.Phone);
+
+    if (!recipient) {
+        return {
+            id: lead.id,
+            name: lead.Full_Name,
+            status: "skipped",
+            error: "No compatible recipient was found."
+        };
+    }
+
+    const finalVariables = {};
+    Object.keys(variables || {}).forEach(key => {
+        const field = variables[key];
+        finalVariables[key] = lead[field] || "";
+    });
+
+    try {
+        await messageService.sendMessage({
+            organizationId,
+            channel,
+            recipient,
+            templateId,
+            templateName,
+            variables: finalVariables,
+            recordId: lead.id,
+            module: "Leads"
+        });
+
+        return {
+            id: lead.id,
+            name: lead.Full_Name,
+            status: "accepted"
+        };
+    } catch (error) {
+        return {
+            id: lead.id,
+            name: lead.Full_Name,
+            status: "failed",
+            error: error.message
+        };
+    }
+}
+
+async function send(data) {
     const {
-
         organizationId,
         channel,
         templateId,
         templateName,
-        variables,
-        leads
-
+        variables = {},
+        leads = []
     } = data;
 
-   const results = [];
-
-let success = 0;
-
-let failed = 0;
-
-for(const lead of leads){
-
-    try{
-
-        const recipient =
-            channel === "email"
-                ? lead.Email
-                : (lead.Mobile || lead.Phone);
-
-        const finalVariables = {};
-
-Object.keys(variables).forEach(key=>{
-
-    const field = variables[key];
-
-    finalVariables[key] =
-        lead[field] || "";
-
-});
-
-await messageService.sendMessage({
-
-    organizationId,
-
-    channel,
-
-    recipient,
-
-    templateId,
-
-    templateName,
-
-    variables:finalVariables,
-
-    recordId:lead.id,
-
-    module:"Leads"
-
-});
-
-        success++;
-
-        results.push({
-
-            id:lead.id,
-
-            name:lead.Full_Name,
-
-            status:"sent"
-
-        });
-
+    if (!Array.isArray(leads)) {
+        const error = new Error("leads must be an array.");
+        error.statusCode = 400;
+        throw error;
     }
 
-    catch(err){
+    const concurrency = getBulkConcurrency(
+        data.concurrency || process.env.AUTHKEY_BULK_CONCURRENCY,
+        5
+    );
 
-        failed++;
+    const results = [];
 
-        results.push({
+    for (let start = 0; start < leads.length; start += concurrency) {
+        const batch = leads.slice(start, start + concurrency);
+        const batchResults = await Promise.all(
+            batch.map(lead => sendOne({
+                lead,
+                organizationId,
+                channel,
+                templateId,
+                templateName,
+                variables
+            }))
+        );
 
-            id:lead.id,
-
-            name:lead.Full_Name,
-
-            status:"failed",
-
-            error:err.message
-
-        });
-
+        results.push(...batchResults);
     }
 
-}
-        
+    const acceptedCount = results.filter(item => item.status === "accepted").length;
+    const failedCount = results.filter(item => item.status === "failed").length;
+    const skippedCount = results.filter(item => item.status === "skipped").length;
 
-
-   return{
-
-    success:true,
-
-    total:leads.length,
-
-    successCount:success,
-
-    failedCount:failed,
-
-    results
-
-};
-
+    return {
+        success: failedCount === 0,
+        total: leads.length,
+        acceptedCount,
+        failedCount,
+        skippedCount,
+        results
+    };
 }
 
 module.exports = {
