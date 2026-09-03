@@ -10,7 +10,8 @@ const WorkflowConfigSchema = new mongoose.Schema(
 
         workflowName: {
             type: String,
-            required: true
+            required: true,
+            trim: true
         },
 
         module: {
@@ -18,26 +19,21 @@ const WorkflowConfigSchema = new mongoose.Schema(
             required: true
         },
 
-        // Supported values: create, edit
         trigger: {
             type: String,
-            required: true
+            required: true,
+            enum: ["create", "edit"]
         },
 
-        // Kept explicitly because Zoho workflow automation uses this value.
         triggerType: {
             type: String,
-            required: true
+            required: true,
+            enum: ["create", "edit"]
         },
 
         channel: {
             type: String,
             required: true
-        },
-
-        fallbackChannel: {
-            type: String,
-            default: ""
         },
 
         templateId: {
@@ -62,17 +58,22 @@ const WorkflowConfigSchema = new mongoose.Schema(
 
         enabled: {
             type: Boolean,
-            default: true
+            default: true,
+            index: true
         },
 
         // Zoho automation resources created for this workflow.
         zohoModuleId: String,
-        zohoWebhookId: String,
-        zohoWorkflowRuleId: String,
-        zohoApiDomain: {
+        zohoWebhookId: {
             type: String,
-            default: "https://www.zohoapis.com"
+            index: true
         },
+        zohoWorkflowRuleId: {
+            type: String,
+            index: true
+        },
+        // Always populated from the OAuth response; never default to a data center.
+        zohoApiDomain: String,
         webhookUrl: String,
 
         // Each workflow has its own secret. Only its SHA-256 hash is stored.
