@@ -5,8 +5,10 @@ const WorkflowConfig = require("../models/WorkflowConfig");
 const zohoOAuthService = require("../Services/zohoOAuthService");
 const zohoCrmService = require("../Services/zohoCrmService");
 const zohoAutomationService = require("../Services/zohoAutomationService");
-
-const ALLOWED_MODULES = ["Leads", "Contacts", "Accounts", "Deals", "Tasks"];
+const {
+    ALLOWED_MODULES,
+    validateWorkflowInput
+} = require("../utils/requestValidation");
 
 function generateWebhookSecret() {
     return crypto.randomBytes(32).toString("hex");
@@ -75,8 +77,6 @@ exports.zohoOAuthCallback = async function(req, res) {
         if (!code || !state) return res.status(400).send("Zoho authorization code/state is missing.");
 
         const stateData = zohoOAuthService.getOrganizationFromState(state);
-
-        // Zoho's callback server is authoritative for the one-time grant code.
         const accountsDomain = accountsServer || stateData.accountsDomain;
         if (!accountsDomain) throw new Error("Zoho Accounts server is missing from the OAuth callback.");
 
@@ -115,86 +115,78 @@ exports.zohoOAuthCallback = async function(req, res) {
 
 exports.saveWorkflow = async function(req, res) {
     try {
-        const required = ["organizationId", "workflowName", "module", "trigger", "channel", "templateId", "recipientField"];
-        const missing = required.find(field => !req.body[field]);
-        if (missing) return res.status(400).json({ success: false, message: `${missing} is required.` });
+        const input = validateWorkflowInput(req.body);
+        const existingWorkflow = await WorkflowConfig.findOne({
+            organizationId: input.organizationId,
+            workflowName: input.workflowName
+        }).select("+webhookSecretHash");
 
-        const organizationId = String(req.body.organizationId);
-        const trigger = String(req.body.trigger).trim().toLowerCase();
-        const module = String(req.body.module).trim();
+        const isUpdate = Boolean(existingWorkflow?.zohoWebhookId || existingWorkflow?.zohoWorkflowRuleId);
+        const workflow = existingWorkflow || new WorkflowConfig({
+            organizationId: input.organizationId,
+            workflowName: input.workflowName
+        });
 
-        if (!ALLOWED_MODULES.includes(module)) {
-            return res.status(400).json({ success: false, message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.` });
-        }
-
-        if (!["create", "edit"].includes(trigger)) {
-            return res.status(400).json({ success: false, message: "Only Create and Update triggers are supported." });
-        }
-
-        const existingWorkflow = await WorkflowConfig.findOne({ organizationId, workflowName: req.body.workflowName }).select("+webhookSecretHash");
-        let webhookSecret = null;
-        let webhookSecretHash = existingWorkflow?.webhookSecretHash || null;
-
-        if (!webhookSecretHash) {
-            webhookSecret = generateWebhookSecret();
-            webhookSecretHash = hashWebhookSecret(webhookSecret);
-        }
-
-        const workflow = await WorkflowConfig.findOneAndUpdate(
-            { organizationId, workflowName: req.body.workflowName },
-            {
-                ...req.body,
-                organizationId,
-                module,
-                trigger,
-                triggerType: trigger,
-                enabled: true,
-                webhookSecretHash
-            },
-            { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
-        );
+        Object.assign(workflow, {
+            ...input,
+            triggerType: input.trigger,
+            enabled: true
+        });
 
         let zohoSetup = null;
 
-        if (req.body.autoConfigureZoho !== false) {
-            const tokenData = await zohoOAuthService.getAccessToken(organizationId);
+        if (input.autoConfigureZoho) {
+            const tokenData = await zohoOAuthService.getAccessToken(input.organizationId);
+            const webhookSecret = generateWebhookSecret();
 
-            if (!workflow.zohoWebhookId || !workflow.zohoWorkflowRuleId) {
-                if (!webhookSecret) {
-                    webhookSecret = generateWebhookSecret();
-                    workflow.webhookSecretHash = hashWebhookSecret(webhookSecret);
-                    await workflow.save();
-                }
-
-                zohoSetup = await zohoAutomationService.setupZohoAutomation({
+            // For edits, remove the old Zoho resources and recreate them from the
+            // latest workflow configuration so template fields, recipient mapping,
+            // trigger, and channel changes are reflected in Zoho.
+            if (isUpdate) {
+                await zohoAutomationService.deleteZohoAutomation({
                     accessToken: tokenData.accessToken,
-                    apiDomain: tokenData.apiDomain,
-                    workflow,
-                    webhookSecret
+                    zohoWorkflowRuleId: workflow.zohoWorkflowRuleId,
+                    zohoWebhookId: workflow.zohoWebhookId,
+                    apiDomain: workflow.zohoApiDomain || tokenData.apiDomain
                 });
 
-                workflow.zohoApiDomain = tokenData.apiDomain;
-                workflow.zohoModuleId = zohoSetup.zohoModuleId;
-                workflow.zohoWebhookId = zohoSetup.zohoWebhookId;
-                workflow.zohoWorkflowRuleId = zohoSetup.zohoWorkflowRuleId;
-                workflow.webhookUrl = zohoSetup.webhookUrl;
-                await workflow.save();
-            } else {
-                workflow.zohoApiDomain = tokenData.apiDomain;
-                await workflow.save();
-                zohoSetup = {
-                    zohoModuleId: workflow.zohoModuleId,
-                    zohoWebhookId: workflow.zohoWebhookId,
-                    zohoWorkflowRuleId: workflow.zohoWorkflowRuleId,
-                    webhookUrl: workflow.webhookUrl
-                };
+                workflow.zohoModuleId = undefined;
+                workflow.zohoWebhookId = undefined;
+                workflow.zohoWorkflowRuleId = undefined;
+                workflow.webhookUrl = undefined;
             }
+
+            workflow.webhookSecretHash = hashWebhookSecret(webhookSecret);
+            workflow.zohoApiDomain = tokenData.apiDomain;
+            await workflow.save();
+
+            zohoSetup = await zohoAutomationService.setupZohoAutomation({
+                accessToken: tokenData.accessToken,
+                apiDomain: tokenData.apiDomain,
+                workflow,
+                webhookSecret
+            });
+
+            workflow.zohoModuleId = zohoSetup.zohoModuleId;
+            workflow.zohoWebhookId = zohoSetup.zohoWebhookId;
+            workflow.zohoWorkflowRuleId = zohoSetup.zohoWorkflowRuleId;
+            workflow.webhookUrl = zohoSetup.webhookUrl;
+            await workflow.save();
+
+            zohoSetup.updated = isUpdate;
+        } else {
+            await workflow.save();
         }
 
         const workflowResponse = workflow.toObject();
         delete workflowResponse.webhookSecretHash;
 
-        return res.status(201).json({ success: true, workflowId: workflow._id, workflow: workflowResponse, zoho: zohoSetup });
+        return res.status(existingWorkflow ? 200 : 201).json({
+            success: true,
+            workflowId: workflow._id,
+            workflow: workflowResponse,
+            zoho: zohoSetup
+        });
     } catch (error) {
         console.error("SAVE WORKFLOW ERROR:", error.response?.data || error.message);
         return res.status(error.statusCode || error.response?.status || 500).json({
@@ -239,7 +231,7 @@ exports.getZohoModules = async function(req, res) {
         const tokenData = await zohoOAuthService.getAccessToken(String(organizationId));
         const modules = await zohoCrmService.getModules(tokenData.accessToken, tokenData.apiDomain);
 
-        return res.json({ success: true, apiDomain: tokenData.apiDomain, environment: tokenData.environment, modules: modules.filter(module => ALLOWED_MODULES.includes(module.api_name)) });
+        return res.json({ success: true, apiDomain: tokenData.apiDomain, environment: tokenData.environment, modules: modules.filter(module => ALLOWED_MODULES.has(module.api_name)) });
     } catch (error) {
         console.error("Get Zoho modules error:", error.response?.data || error.message);
         return res.status(error.statusCode || error.response?.status || 500).json({ success: false, message: error.response?.data?.message || error.message });
@@ -251,7 +243,7 @@ exports.getZohoFields = async function(req, res) {
         const { organizationId, module } = req.query;
         if (!organizationId) return res.status(400).json({ success: false, message: "organizationId is required." });
         if (!module) return res.status(400).json({ success: false, message: "module is required." });
-        if (!ALLOWED_MODULES.includes(module)) return res.status(400).json({ success: false, message: `Supported modules are: ${ALLOWED_MODULES.join(", ")}.` });
+        if (!ALLOWED_MODULES.has(module)) return res.status(400).json({ success: false, message: `Supported modules are: ${[...ALLOWED_MODULES].join(", ")}.` });
 
         const tokenData = await zohoOAuthService.getAccessToken(String(organizationId));
         const fields = await zohoCrmService.getFields(tokenData.accessToken, module, tokenData.apiDomain);
