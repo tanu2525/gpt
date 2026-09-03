@@ -1,106 +1,255 @@
-# Authkey for Zoho CRM - MVP
+# Authkey for Zoho CRM
 
-This project is the backend and embedded widgets for an Authkey Zoho CRM extension.
+Authkey for Zoho CRM is a Zoho CRM extension that connects CRM records and workflows with Authkey messaging channels.
 
-## What is implemented
+## Main capabilities
 
-- Encrypted, organization-scoped Authkey credential storage
-- Template fetching for supported Authkey channels
+- Organization-scoped encrypted Authkey credential storage
+- Dynamic Zoho OAuth support across Zoho data centers
+- Separate Sandbox and Production OAuth connections
 - Manual messaging from Zoho CRM records
-- Delivery history persistence
-- Authkey workflow configuration
+- Bulk message processing with controlled concurrency
+- Template fetching for supported Authkey channels
+- Delivery history and provider status tracking
 - Automatic Zoho webhook and workflow-rule creation
+- Workflow editing that recreates Zoho automation from the latest configuration
 - Workflow-specific webhook secrets
+- Lookup-aware recipient resolution
+- Lookup-aware template variable mapping
 - Support for Leads, Contacts, Accounts, Deals, and Tasks
-- Environment-aware Zoho OAuth handling for Production and Sandbox
 
-## Run locally
-
-1. Create a `.env` file and configure the required MongoDB, Authkey, Zoho OAuth, and webhook values.
-2. Run `npm install`.
-3. Run `npm start`.
-
-## Required workflow environment variables
+## Architecture
 
 ```text
+Zoho CRM
+   |
+   | CRM record / workflow event
+   v
+Zoho Workflow Rule
+   |
+   v
+Zoho Webhook
+   |
+   | X-Workflow-Secret
+   v
+Node.js Backend
+   |
+   +--> Refresh Zoho OAuth access token
+   |
+   +--> Fetch CRM record and related lookup records
+   |
+   +--> Resolve recipient and template variables
+   |
+   v
+Authkey API
+   |
+   v
+Message Provider Response
+   |
+   v
+MongoDB DeliveryLog
+```
+
+## Project structure
+
+```text
+app/
+  common/                 Shared extension JavaScript
+  workflow/               Workflow configuration UI
+  widget/                 Manual messaging UI
+
+server/
+  controllers/            HTTP request handlers
+  models/                 MongoDB schemas
+  routes/                 Express routes
+  Services/               Authkey and Zoho integrations
+  utils/                  Encryption and validation utilities
+```
+
+## Local development
+
+1. Clone the repository.
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Create a `.env` file.
+4. Configure MongoDB, Authkey, Zoho OAuth, and public webhook settings.
+5. Start the extension:
+
+```bash
+npm start
+```
+
+For Zoho extension development, use the appropriate Zoho extension CLI command, such as:
+
+```bash
+zet run
+```
+
+## Important environment variables
+
+```text
+MONGODB_URI=your_mongodb_connection
+ENCRYPTION_KEY=32_byte_base64_or_hex_key
+
 ZOHO_CLIENT_ID=your_zoho_client_id
 ZOHO_CLIENT_SECRET=your_zoho_client_secret
-ZOHO_REDIRECT_URI=https://your-domain.com/api/workflow/zoho/oauth/callback
-ZOHO_OAUTH_STATE_SECRET=a_long_random_secret
-WEBHOOK_BASE_URL=https://your-domain.com
+ZOHO_REDIRECT_URI=https://your-public-domain/api/workflow/zoho/oauth/callback
+ZOHO_OAUTH_STATE_SECRET=a-long-random-secret
 ZOHO_SCOPES=ZohoCRM.modules.ALL,ZohoCRM.settings.ALL
+
+WEBHOOK_BASE_URL=https://your-public-domain
+AUTHKEY_WEBHOOK_SECRET=separate-callback-secret
+AUTHKEY_BULK_CONCURRENCY=5
 ```
 
-Use the actual Zoho OAuth scopes required by your extension and deployment. `ZohoCRM.modules.ALL` allows CRM record access and `ZohoCRM.settings.ALL` is required for the automation/settings APIs used to create workflow automation. Review the scopes against the Zoho account permissions before production release.
+Never commit `.env`, private keys, certificates, refresh tokens, or Authkey credentials.
 
-## Zoho Sandbox and Production
+## Zoho OAuth and data centers
 
-The extension is tested in Zoho Sandbox. Sandbox and Production can have different organization IDs, and Zoho OAuth tokens are environment-specific. A Sandbox refresh token cannot be used against Production APIs, and a Production token cannot be used against Sandbox APIs.
+Do not hardcode a Zoho API domain.
 
-The workflow system therefore stores the Zoho connection by the current organization ID and saves the API domain returned by Zoho OAuth. For example:
+Zoho returns an `api_domain` during OAuth token exchange and refresh. The application stores that domain with the organization's OAuth connection and uses it for CRM API requests.
+
+Examples include:
 
 ```text
-Sandbox organization
-  → sandbox organization ID
-  → sandbox OAuth token
-  → sandbox.zohoapis.* API domain
-
-Production organization
-  → production organization ID
-  → production OAuth token
-  → www.zohoapis.* API domain
+https://www.zohoapis.com
+https://www.zohoapis.in
+https://www.zohoapis.eu
+https://sandbox.zohoapis.in
 ```
 
-When moving from Sandbox to Production, open the extension in the Production organization and connect Zoho again for that Production organization.
+Sandbox and Production organizations can have different organization IDs and OAuth tokens. Connect each environment separately.
 
-## Automatic Zoho CRM workflows
-
-The intended client flow is:
+## Workflow flow
 
 ```text
-Open Authkey Workflow page
-        ↓
-Configure workflow
-        ↓
-Connect Zoho CRM once for the current organization/environment
-        ↓
+Open Workflow Configuration
+        |
+        v
+Connect current Zoho organization
+        |
+        v
+Select module, trigger, channel, template and recipient
+        |
+        v
+Map template variables
+        |
+        v
 Save Workflow
-        ↓
-Backend generates a unique workflow secret
-        ↓
-Backend creates the Zoho webhook automatically
-        ↓
-Backend adds X-Workflow-Secret automatically
-        ↓
-Backend creates the Zoho workflow rule automatically
+        |
+        +--> New workflow: create Zoho webhook + workflow rule
+        |
+        +--> Existing workflow: replace old Zoho automation with updated configuration
 ```
 
-The client does not need to manually copy a webhook secret or create the webhook after the automatic setup is working with the required Zoho OAuth permissions.
+When a workflow is updated, the backend generates a new webhook secret, safely removes the previous Zoho workflow rule and webhook, and creates new resources from the latest configuration.
 
-Each workflow has its own randomly generated secret. The backend stores only a SHA-256 hash of that secret and verifies the `X-Workflow-Secret` header when Zoho triggers the workflow.
+## Recipient and variable mapping
 
-## Supported workflow modules
+Recipient fields can be direct CRM fields or lookup fields when supported by the selected module.
 
-- Leads
-- Contacts
-- Accounts
-- Deals
-- Tasks
+Template variables support:
 
-Supported triggers currently are:
+```text
+Direct field:
+First_Name
 
-- Create
-- Update (`edit` in the Zoho automation API)
+Lookup field:
+Contact_Name.Email
+Contact_Name.Mobile
+Account_Name.Account_Name
+```
 
-## Delivery and inbound callbacks
+The backend fetches the related record when a lookup mapping is used.
 
-Configure Authkey delivery updates and inbound replies according to the deployed callback routes. Callback authentication should use a separate Authkey callback secret and must not reuse workflow webhook secrets.
+## Delivery statuses
+
+An Authkey API success response means the provider accepted the request; it does not necessarily mean the message was delivered.
+
+The application uses statuses such as:
+
+```text
+queued
+accepted
+sent
+delivered
+failed
+received
+```
+
+Delivery callbacks update the message log when Authkey provides a later delivery status.
+
+## Bulk processing
+
+Bulk messaging uses controlled concurrency rather than sending every record simultaneously or strictly one at a time.
+
+Configure the default concurrency with:
+
+```text
+AUTHKEY_BULK_CONCURRENCY=5
+```
+
+The application clamps concurrency to a safe range of 1–20.
+
+## Security notes
+
+- Authkey credentials are encrypted before storage.
+- Workflow webhook secrets are stored only as SHA-256 hashes.
+- Webhook secret comparisons use timing-safe comparison.
+- Authkey callback authentication uses a separate callback secret.
+- Zoho OAuth connections are scoped by organization ID.
+- Provider responses stored in delivery logs are reduced to useful metadata instead of storing unnecessary full payloads.
+
+## Testing checklist
+
+### OAuth
+
+- [ ] Connect Sandbox organization
+- [ ] Connect Production organization
+- [ ] Verify the API domain returned by Zoho is used dynamically
+- [ ] Verify a Sandbox token is never used for Production requests
+
+### Workflow creation
+
+- [ ] Create workflow
+- [ ] Confirm Zoho webhook is created
+- [ ] Confirm Zoho workflow rule is created
+- [ ] Trigger a record event
+- [ ] Confirm the Authkey message request is accepted
+
+### Workflow update
+
+- [ ] Change the template
+- [ ] Change the recipient field
+- [ ] Change variable mappings
+- [ ] Change the trigger
+- [ ] Save again
+- [ ] Confirm the old Zoho automation is replaced by the new configuration
+
+### Delivery
+
+- [ ] Confirm initial log status is `accepted`
+- [ ] Send a provider callback
+- [ ] Confirm the status changes to `sent`, `delivered`, or `failed`
+
+### Lookup mapping
+
+- [ ] Select a Deal or Task lookup field
+- [ ] Map a related record field
+- [ ] Trigger the workflow
+- [ ] Confirm the related record value reaches the Authkey template
 
 ## Before Marketplace release
 
-- Test the full workflow flow separately in Sandbox and Production.
-- Verify all requested Zoho OAuth scopes and permissions with the actual extension configuration.
-- Confirm automatic webhook and workflow-rule creation for each supported module.
-- Test recipient resolution for Deals and Tasks because these modules may use related CRM records rather than a direct phone field.
-- Confirm Authkey's production API contract for every enabled channel.
-- Use a public HTTPS deployment for all production webhooks and OAuth redirects.
+- Verify the exact OAuth client credentials and redirect URI required for the published extension.
+- Confirm all requested OAuth scopes with Zoho.
+- Test every supported channel with the Authkey production API.
+- Test workflows in both Sandbox and Production.
+- Review CORS and backend request authentication before public production deployment.
+- Use a stable public HTTPS URL for OAuth callbacks and webhooks.
+- Add automated tests for OAuth, workflow updates, recipient resolution, lookup mappings, and callback verification.
