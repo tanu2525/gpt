@@ -30,11 +30,35 @@
                             <th>Skipped</th>
                             <th>Failed</th>
                             <th>Status</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
                     <tbody id="historyBody">
-                        <tr><td colspan="7">Loading history...</td></tr>
+                        <tr><td colspan="8">Loading history...</td></tr>
                     </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="detailsView" hidden>
+            <header class="page-header">
+                <div>
+                    <button id="detailsBackBtn" class="link-btn">← Back to History</button>
+                    <h2>Transfer Details</h2>
+                    <p id="detailsSummary"></p>
+                </div>
+            </header>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Zoho Record ID</th>
+                            <th>Status</th>
+                            <th>Data Sent to Authkey</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailsBody"></tbody>
                 </table>
             </div>
         </section>
@@ -62,7 +86,6 @@
                 </div>
 
                 <div id="mappingRows"></div>
-
                 <button id="addFieldBtn" type="button" class="secondary-btn">+ Add Field</button>
 
                 <div class="actions">
