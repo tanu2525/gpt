@@ -1,12 +1,23 @@
 const axios = require("axios");
 
-const DEFAULT_CRM_BASE_URL =
-    process.env.ZOHO_CRM_BASE_URL ||
-    "https://www.zohoapis.com/crm/v8";
-
 function normalizeApiDomain(apiDomain) {
-    return String(apiDomain || "").replace(/\/$/, "");
+    return String(apiDomain || "").trim().replace(/\/$/, "");
 }
+
+function getCrmBaseUrl(apiDomain) {
+    const normalizedDomain = normalizeApiDomain(apiDomain);
+
+    if (!normalizedDomain) {
+        throw new Error(
+            "Zoho API domain is required. The domain must come dynamically from the connected Zoho organization/token response."
+        );
+    }
+
+    return `${normalizedDomain}`
+        .replace(/\/crm\/v\d+$/i, "")
+        .replace(/\/$/, "") + "/crm/v8";
+}
+
 async function zohoRequest({
     accessToken,
     method = "GET",
@@ -19,11 +30,7 @@ async function zohoRequest({
         throw new Error("Zoho OAuth access token is required");
     }
 
-    const baseUrl =
-        `${normalizeApiDomain(apiDomain) || DEFAULT_CRM_BASE_URL}`
-            .replace(/\/crm\/v\d+$/i, "")
-            .replace(/\/$/, "") + "/crm/v8";
-
+    const baseUrl = getCrmBaseUrl(apiDomain);
     const requestUrl = `${baseUrl}${url}`;
 
     console.log("\n========== ZOHO CRM REQUEST ==========");
@@ -51,7 +58,6 @@ async function zohoRequest({
         });
 
         return response.data;
-
     } catch (error) {
         console.error("\n========== ZOHO CRM API ERROR ==========");
         console.error("Status:", error.response?.status);
@@ -156,6 +162,7 @@ async function getRecord(
 
 module.exports = {
     zohoRequest,
+    getCrmBaseUrl,
     getModules,
     getModule,
     getFields,
