@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Data to Authkey</title>
+    <link rel="stylesheet" href="sendDataToAuthkey.css">
+</head>
+<body>
+    <main class="page">
+        <section id="historyView">
+            <header class="page-header">
+                <div>
+                    <h2>Send Data to Authkey</h2>
+                    <p>View all Zoho CRM data transfers to Authkey.</p>
+                </div>
+                <button id="openSyncBtn" class="primary-btn">Send Data to Authkey</button>
+            </header>
+
+            <p id="historyStatus" class="status"></p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Module</th>
+                            <th>Total</th>
+                            <th>Sent</th>
+                            <th>Skipped</th>
+                            <th>Failed</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody">
+                        <tr><td colspan="7">Loading history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="configView" hidden>
+            <header class="page-header">
+                <div>
+                    <button id="backBtn" class="link-btn">← Back to History</button>
+                    <h2>Configure Data Transfer</h2>
+                    <p>Select a Zoho CRM module and choose exactly which fields should be sent to Authkey.</p>
+                </div>
+            </header>
+
+            <div class="form-card">
+                <label for="moduleSelect">Zoho CRM Module</label>
+                <select id="moduleSelect">
+                    <option value="Leads">Leads</option>
+                    <option value="Contacts">Contacts</option>
+                    <option value="Accounts">Accounts</option>
+                </select>
+
+                <div class="mapping-header">
+                    <h3>Field Mapping</h3>
+                    <span>Select a Zoho field and the Authkey payload field.</span>
+                </div>
+
+                <div id="mappingRows"></div>
+
+                <button id="addFieldBtn" type="button" class="secondary-btn">+ Add Field</button>
+
+                <div class="actions">
+                    <button id="sendBtn" type="button" class="primary-btn">Send Module Data</button>
+                </div>
+
+                <p id="configStatus" class="status"></p>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        window.AUTHKEY_EXTENSION_API_BASE_URL = "https://augmented-carefully-unseeing.ngrok-free.dev";
+    </script>
+    <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+    <script src="../common/auth.js"></script>
+    <script src="../common/api.js"></script>
+    <script src="sendDataToAuthkey.js"></script>
+</body>
+</html>
