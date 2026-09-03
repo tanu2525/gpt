@@ -1,11 +1,16 @@
 const axios = require("axios");
 
 function getBaseUrl(apiDomain) {
-    const domain = String(
-        apiDomain || process.env.ZOHO_CRM_BASE_URL || "https://www.zohoapis.in"
-    ).replace(/\/$/, "");
+    const domain = String(apiDomain || "")
+        .trim()
+        .replace(/\/$/, "")
+        .replace(/\/crm\/v\d+$/i, "");
 
-    return domain.replace(/\/crm\/v\d+$/i, "") + "/crm/v8";
+    if (!domain) {
+        throw new Error("Zoho API domain is required.");
+    }
+
+    return `${domain}/crm/v8`;
 }
 
 function getHeaders(accessToken) {
@@ -41,15 +46,20 @@ async function findModule(accessToken, moduleApiName, apiDomain) {
     return module;
 }
 
+function getRootField(fieldPath) {
+    return String(fieldPath || "").split(".")[0].trim();
+}
+
 function buildWebhookFields(workflow) {
     const fields = new Set(["id"]);
 
     if (workflow.recipientField) {
-        fields.add(workflow.recipientField);
+        fields.add(getRootField(workflow.recipientField));
     }
 
     for (const field of Object.values(workflow.variables || {})) {
-        if (field) fields.add(field);
+        const rootField = getRootField(field);
+        if (rootField) fields.add(rootField);
     }
 
     return [...fields];
@@ -128,36 +138,6 @@ async function createWebhook({
     };
 }
 
-async function updateWebhookSecret({
-    accessToken,
-    webhookId,
-    webhookSecret,
-    apiDomain
-}) {
-    if (!webhookId) {
-        throw new Error("Zoho webhook ID is required.");
-    }
-
-    const response = await axios.put(
-        `${getBaseUrl(apiDomain)}/settings/automation/webhooks/${webhookId}`,
-        {
-            webhooks: [{
-                http_method: "POST",
-                headers: buildSecretHeader(webhookSecret)
-            }]
-        },
-        { headers: getHeaders(accessToken) }
-    );
-
-    const webhook = response.data.webhooks?.[0];
-
-    if (webhook?.status && webhook.status !== "success") {
-        throw new Error(webhook.message || "Zoho webhook secret was not updated.");
-    }
-
-    return webhookId;
-}
-
 async function createWorkflowRule({ accessToken, workflow, module, webhookId, apiDomain }) {
     const triggerType = String(workflow.triggerType || workflow.trigger || "").toLowerCase();
 
@@ -215,6 +195,48 @@ async function createWorkflowRule({ accessToken, workflow, module, webhookId, ap
     return rule.details.id;
 }
 
+async function deleteWorkflowRule({ accessToken, workflowRuleId, apiDomain }) {
+    if (!workflowRuleId) return;
+
+    await axios.delete(
+        `${getBaseUrl(apiDomain)}/settings/automation/workflow_rules/${workflowRuleId}`,
+        { headers: getHeaders(accessToken) }
+    );
+}
+
+async function deleteWebhook({ accessToken, webhookId, apiDomain }) {
+    if (!webhookId) return;
+
+    await axios.delete(
+        `${getBaseUrl(apiDomain)}/settings/automation/webhooks/${webhookId}`,
+        { headers: getHeaders(accessToken) }
+    );
+}
+
+async function deleteZohoAutomation({
+    accessToken,
+    zohoWorkflowRuleId,
+    zohoWebhookId,
+    apiDomain
+}) {
+    // The rule references the webhook, so delete the rule first.
+    if (zohoWorkflowRuleId) {
+        await deleteWorkflowRule({
+            accessToken,
+            workflowRuleId: zohoWorkflowRuleId,
+            apiDomain
+        });
+    }
+
+    if (zohoWebhookId) {
+        await deleteWebhook({
+            accessToken,
+            webhookId: zohoWebhookId,
+            apiDomain
+        });
+    }
+}
+
 async function setupZohoAutomation({
     accessToken,
     workflow,
@@ -256,10 +278,11 @@ async function setupZohoAutomation({
         };
     } catch (error) {
         try {
-            await axios.delete(
-                `${getBaseUrl(apiDomain)}/settings/automation/webhooks/${webhook.id}`,
-                { headers: getHeaders(accessToken) }
-            );
+            await deleteWebhook({
+                accessToken,
+                webhookId: webhook.id,
+                apiDomain
+            });
         } catch (cleanupError) {
             console.error(
                 "Webhook cleanup failed:",
@@ -275,7 +298,9 @@ module.exports = {
     getModules,
     findModule,
     createWebhook,
-    updateWebhookSecret,
     createWorkflowRule,
+    deleteWorkflowRule,
+    deleteWebhook,
+    deleteZohoAutomation,
     setupZohoAutomation
 };
