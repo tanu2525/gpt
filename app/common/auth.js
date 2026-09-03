@@ -1,3 +1,92 @@
+function normalizeUrl(value) {
+    return String(value || "").trim().replace(/\/$/, "");
+}
+
+function getZohoApiDomainFromCountry(countryCode, country) {
+    const code = String(countryCode || "").trim().toUpperCase();
+    const name = String(country || "").trim().toLowerCase();
+
+    if (code === "IN" || name === "india") return "https://www.zohoapis.in";
+    if (code === "AU" || name === "australia") return "https://www.zohoapis.com.au";
+    if (code === "JP" || name === "japan") return "https://www.zohoapis.jp";
+    if (code === "SG" || name === "singapore") return "https://www.zohoapis.sg";
+
+    const euCountries = new Set([
+        "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+        "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+        "PL", "PT", "RO", "SK", "SI", "ES", "SE"
+    ]);
+
+    if (euCountries.has(code)) return "https://www.zohoapis.eu";
+
+    return "";
+}
+
+function getZohoApiDomainFromUrl(value) {
+    const text = normalizeUrl(value).toLowerCase();
+    if (!text) return "";
+
+    if (/zohoapis\.in|crm\.zoho\.in/.test(text)) return "https://www.zohoapis.in";
+    if (/zohoapis\.eu|crm\.zoho\.eu/.test(text)) return "https://www.zohoapis.eu";
+    if (/zohoapis\.com\.au|crm\.zoho\.com\.au/.test(text)) return "https://www.zohoapis.com.au";
+    if (/zohoapis\.jp|crm\.zoho\.jp/.test(text)) return "https://www.zohoapis.jp";
+    if (/zohoapis\.sg|crm\.zoho\.sg/.test(text)) return "https://www.zohoapis.sg";
+    if (/zohoapis\.com|crm\.zoho\.com/.test(text)) return "https://www.zohoapis.com";
+
+    return "";
+}
+
+function getZohoApiDomainFromPageContext() {
+    const candidates = [
+        window.location?.href,
+        document.referrer
+    ];
+
+    try {
+        const origins = window.location?.ancestorOrigins;
+        if (origins) candidates.push(...Array.from(origins));
+    } catch (_) {
+        // ancestorOrigins is not available in every browser.
+    }
+
+    for (const candidate of candidates) {
+        const apiDomain = getZohoApiDomainFromUrl(candidate);
+        if (apiDomain) return apiDomain;
+    }
+
+    return "";
+}
+
+function resolveZohoApiDomain(organization) {
+    const directCandidates = [
+        organization?.api_domain,
+        organization?.apiDomain,
+        organization?.crm_api_domain,
+        organization?.crmApiDomain,
+        organization?.api_url,
+        organization?.apiUrl,
+        organization?.base_url,
+        organization?.baseUrl,
+        organization?.crm_url,
+        organization?.crmUrl,
+        organization?.url
+    ];
+
+    for (const candidate of directCandidates) {
+        const apiDomain = getZohoApiDomainFromUrl(candidate);
+        if (apiDomain) return apiDomain;
+    }
+
+    const countryBasedDomain = getZohoApiDomainFromCountry(
+        organization?.country_code || organization?.countryCode,
+        organization?.country
+    );
+
+    if (countryBasedDomain) return countryBasedDomain;
+
+    return getZohoApiDomainFromPageContext();
+}
+
 async function getOrganizationContext() {
     const response = await ZOHO.CRM.CONFIG.getOrgInfo();
     const organization = Array.isArray(response?.org) ? response.org[0] : response?.org;
@@ -11,12 +100,7 @@ async function getOrganizationContext() {
         throw new Error("Unable to determine the Zoho organization ID.");
     }
 
-    const apiDomain =
-        organization?.api_domain ||
-        organization?.apiDomain ||
-        organization?.crm_api_domain ||
-        organization?.crmApiDomain ||
-        "";
+    const apiDomain = resolveZohoApiDomain(organization);
 
     const environment =
         organization?.type ||
@@ -26,7 +110,10 @@ async function getOrganizationContext() {
     return {
         organizationId: String(organizationId),
         apiDomain: String(apiDomain || ""),
-        environment: String(environment || "")
+        environment: String(environment || ""),
+        countryCode: String(
+            organization?.country_code || organization?.countryCode || ""
+        )
     };
 }
 
