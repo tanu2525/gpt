@@ -186,7 +186,9 @@ async function createWorkflowRule({ accessToken, workflow, module, webhookId, ap
             description: `Authkey ${workflow.channel} workflow`,
             conditions: [{
                 sequence_number: 1,
-                criteria_details: null,
+                criteria_details: {
+                    criteria: null
+                },
                 instant_actions: {
                     actions: [{
                         id: webhookId,
