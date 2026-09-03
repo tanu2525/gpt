@@ -1,5 +1,4 @@
 let moduleFields = [];
-
 const SUPPORTED_MODULES = ["Leads", "Contacts", "Accounts"];
 
 function setStatus(elementId, message = "", type = "") {
@@ -8,17 +7,19 @@ function setStatus(elementId, message = "", type = "") {
     element.className = `status ${type}`;
 }
 
-function showHistory() {
-    document.getElementById("historyView").hidden = false;
-    document.getElementById("configView").hidden = true;
-    loadHistory().catch(error => {
-        setStatus("historyStatus", error.message, "error");
+function showOnly(viewId) {
+    ["historyView", "detailsView", "configView"].forEach(id => {
+        document.getElementById(id).hidden = id !== viewId;
     });
 }
 
+function showHistory() {
+    showOnly("historyView");
+    loadHistory().catch(error => setStatus("historyStatus", error.message, "error"));
+}
+
 function showConfiguration() {
-    document.getElementById("historyView").hidden = true;
-    document.getElementById("configView").hidden = false;
+    showOnly("configView");
     setStatus("configStatus");
 }
 
@@ -32,12 +33,10 @@ function createOption(value, label, selectedValue = "") {
 
 function getSuggestedPayloadPath(field) {
     const name = String(field.api_name || "").toLowerCase();
-
     if (["mobile", "phone"].includes(name)) return "mobile";
     if (name === "email") return "email";
     if (name === "first_name") return "first_name";
     if (name === "last_name") return "last_name";
-
     return String(field.api_name || "").toLowerCase();
 }
 
@@ -56,11 +55,8 @@ function addMappingRow(mapping = {}) {
 
     moduleFields.forEach(field => {
         const label = `${field.field_label || field.api_name} (${field.api_name})`;
-        zohoSelect.appendChild(
-            createOption(field.api_name, label, mapping.zohoField || "")
-        );
+        zohoSelect.appendChild(createOption(field.api_name, label, mapping.zohoField || ""));
     });
-
     zohoGroup.append(zohoLabel, zohoSelect);
 
     const payloadGroup = document.createElement("div");
@@ -95,10 +91,7 @@ function addMappingRow(mapping = {}) {
 async function loadModuleFields() {
     const organizationId = await getOrganizationId();
     const module = document.getElementById("moduleSelect").value;
-
-    if (!SUPPORTED_MODULES.includes(module)) {
-        throw new Error("Select Leads, Contacts or Accounts.");
-    }
+    if (!SUPPORTED_MODULES.includes(module)) throw new Error("Select Leads, Contacts or Accounts.");
 
     const result = await requestJson(
         `/api/workflow/zoho/fields?organizationId=${encodeURIComponent(organizationId)}&module=${encodeURIComponent(module)}`
@@ -107,12 +100,10 @@ async function loadModuleFields() {
     moduleFields = (result.fields || [])
         .filter(field => field.api_name)
         .filter(field => !field.private && !field.system_mandatory)
-        .sort((a, b) => String(a.field_label || a.api_name)
-            .localeCompare(String(b.field_label || b.api_name)));
+        .sort((a, b) => String(a.field_label || a.api_name).localeCompare(String(b.field_label || b.api_name)));
 
     const container = document.getElementById("mappingRows");
     container.innerHTML = "";
-
     const defaults = moduleFields
         .filter(field => ["Mobile", "Phone", "Email", "First_Name", "Last_Name"].includes(field.api_name))
         .slice(0, 5);
@@ -122,9 +113,7 @@ async function loadModuleFields() {
             zohoField: field.api_name,
             payloadPath: getSuggestedPayloadPath(field)
         }));
-    } else {
-        addMappingRow();
-    }
+    } else addMappingRow();
 }
 
 function getMappings() {
@@ -133,12 +122,7 @@ function getMappings() {
             const zohoField = row.querySelector(".zoho-field")?.value?.trim();
             const payloadPath = row.querySelector(".payload-path")?.value?.trim();
             const field = moduleFields.find(item => item.api_name === zohoField);
-
-            return {
-                zohoField,
-                payloadPath,
-                label: field?.field_label || zohoField
-            };
+            return { zohoField, payloadPath, label: field?.field_label || zohoField };
         })
         .filter(mapping => mapping.zohoField && mapping.payloadPath);
 }
@@ -147,10 +131,7 @@ async function sendData() {
     const button = document.getElementById("sendBtn");
     const module = document.getElementById("moduleSelect").value;
     const mappings = getMappings();
-
-    if (!mappings.length) {
-        throw new Error("Add at least one complete field mapping.");
-    }
+    if (!mappings.length) throw new Error("Add at least one complete field mapping.");
 
     button.disabled = true;
     button.textContent = "Sending...";
@@ -175,39 +156,84 @@ async function sendData() {
     }
 }
 
+function createCell(row, value) {
+    const cell = document.createElement("td");
+    cell.textContent = value;
+    row.appendChild(cell);
+    return cell;
+}
+
 async function loadHistory() {
     const organizationId = await getOrganizationId();
-    const result = await requestJson(
-        `/api/zoho/authkey/history/${encodeURIComponent(organizationId)}`
-    );
-
+    const result = await requestJson(`/api/zoho/authkey/history/${encodeURIComponent(organizationId)}`);
     const body = document.getElementById("historyBody");
     const items = result.data || [];
     body.innerHTML = "";
 
     if (!items.length) {
-        body.innerHTML = '<tr><td colspan="7">No data transfer history yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8">No data transfer history yet.</td></tr>';
         return;
     }
 
     items.forEach(item => {
         const row = document.createElement("tr");
-        const date = item.createdAt
-            ? new Date(item.createdAt).toLocaleString()
-            : "-";
-        const status = item.status || "failed";
+        createCell(row, item.createdAt ? new Date(item.createdAt).toLocaleString() : "-");
+        createCell(row, item.module || "-");
+        createCell(row, item.total ?? 0);
+        createCell(row, item.sent ?? 0);
+        createCell(row, item.skipped ?? 0);
+        createCell(row, item.failed ?? 0);
 
-        row.innerHTML = `
-            <td>${date}</td>
-            <td>${item.module || "-"}</td>
-            <td>${item.total ?? 0}</td>
-            <td>${item.sent ?? 0}</td>
-            <td>${item.skipped ?? 0}</td>
-            <td>${item.failed ?? 0}</td>
-            <td><span class="badge ${status}">${status}</span></td>
-        `;
+        const statusCell = document.createElement("td");
+        const status = item.status || "failed";
+        const badge = document.createElement("span");
+        badge.className = `badge ${status}`;
+        badge.textContent = status;
+        statusCell.appendChild(badge);
+        row.appendChild(statusCell);
+
+        const detailsCell = document.createElement("td");
+        const detailsButton = document.createElement("button");
+        detailsButton.type = "button";
+        detailsButton.className = "secondary-btn details-btn";
+        detailsButton.textContent = "View Details";
+        detailsButton.addEventListener("click", () => loadHistoryDetails(item._id));
+        detailsCell.appendChild(detailsButton);
+        row.appendChild(detailsCell);
         body.appendChild(row);
     });
+}
+
+async function loadHistoryDetails(historyId) {
+    try {
+        const organizationId = await getOrganizationId();
+        const result = await requestJson(
+            `/api/zoho/authkey/history/${encodeURIComponent(organizationId)}/${encodeURIComponent(historyId)}`
+        );
+
+        document.getElementById("detailsSummary").textContent =
+            `${result.history.module} • Total ${result.history.total} • Sent ${result.history.sent} • Failed ${result.history.failed}`;
+
+        const body = document.getElementById("detailsBody");
+        body.innerHTML = "";
+
+        if (!result.records?.length) {
+            body.innerHTML = '<tr><td colspan="4">No individual record details are available.</td></tr>';
+        } else {
+            result.records.forEach(record => {
+                const row = document.createElement("tr");
+                createCell(row, record.recordId || "-");
+                createCell(row, record.status || "-");
+                createCell(row, JSON.stringify(record.data || {}));
+                createCell(row, record.reason || "-");
+                body.appendChild(row);
+            });
+        }
+
+        showOnly("detailsView");
+    } catch (error) {
+        setStatus("historyStatus", error.message, "error");
+    }
 }
 
 async function initialize() {
@@ -224,6 +250,7 @@ async function initialize() {
 
 document.getElementById("openSyncBtn").addEventListener("click", showConfiguration);
 document.getElementById("backBtn").addEventListener("click", showHistory);
+document.getElementById("detailsBackBtn").addEventListener("click", showHistory);
 document.getElementById("moduleSelect").addEventListener("change", () => {
     loadModuleFields().catch(error => setStatus("configStatus", error.message, "error"));
 });
