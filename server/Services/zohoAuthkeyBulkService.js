@@ -38,12 +38,19 @@ async function getAuthkey(organizationId) {
     return decrypt(credentials);
 }
 
+function getPrimitiveValue(value) {
+    if (value === undefined || value === null) return "";
+    if (typeof value === "object") {
+        return String(value.name || value.id || "").trim();
+    }
+
+    return String(value).trim();
+}
+
 function getFirstValue(record, fields) {
     for (const field of fields) {
-        const value = record?.[field];
-        if (value !== undefined && value !== null && String(value).trim() !== "") {
-            return String(value).trim();
-        }
+        const value = getPrimitiveValue(record?.[field]);
+        if (value) return value;
     }
 
     return "";
@@ -69,7 +76,7 @@ function normalizeMappings(mappings) {
         });
 }
 
-function setByPath(target, path, value) {
+function setByPath(target, path, value, overwrite = false) {
     const parts = String(path)
         .split(".")
         .map(part => part.trim())
@@ -89,7 +96,20 @@ function setByPath(target, path, value) {
         current = current[part];
     }
 
-    current[parts[parts.length - 1]] = value;
+    const lastPart = parts[parts.length - 1];
+    const existing = getPrimitiveValue(current[lastPart]);
+
+    if (overwrite || !existing) {
+        current[lastPart] = value;
+    }
+}
+
+function normalizeMobile(value) {
+    const raw = getPrimitiveValue(value);
+    if (!raw) return "";
+
+    const digits = raw.replace(/\D/g, "");
+    return digits.length >= 6 && digits.length <= 15 ? digits : "";
 }
 
 function mapRecordToAuthkey(record, moduleName, authkey, listName, mappings = []) {
@@ -102,16 +122,19 @@ function mapRecordToAuthkey(record, moduleName, authkey, listName, mappings = []
     };
 
     for (const mapping of normalizeMappings(mappings)) {
-        const value = record?.[mapping.zohoField];
+        const value = getPrimitiveValue(record?.[mapping.zohoField]);
 
-        if (value !== undefined && value !== null && value !== "") {
+        if (value) {
             setByPath(payload, mapping.payloadPath, value);
         }
     }
 
-    if (!payload.mobile && config) {
-        payload.mobile = getFirstValue(record, config.mobileFields);
-    }
+    const mappedMobile = normalizeMobile(payload.mobile);
+    const fallbackMobile = normalizeMobile(
+        getFirstValue(record, config?.mobileFields || [])
+    );
+
+    payload.mobile = mappedMobile || fallbackMobile;
 
     return payload;
 }
@@ -202,6 +225,7 @@ function isProviderSuccess(data) {
 
     if (data.success === true) return true;
     if (String(data.status || "").trim().toLowerCase() === "success") return true;
+    if (String(data.status || "").trim().toLowerCase() === "sent") return true;
     if (String(data.result || "").trim().toLowerCase() === "success") return true;
 
     return false;
@@ -240,6 +264,32 @@ async function sendToAuthkey(payload) {
     return response.data;
 }
 
+async function sendPreparedRecord({ authkey, module, record, listName, mappings }) {
+    const payload = mapRecordToAuthkey(
+        record,
+        module,
+        authkey,
+        listName,
+        mappings
+    );
+
+    if (!payload.mobile) {
+        return {
+            status: "skipped",
+            recordId: record?.id || null,
+            reason: "The CRM record does not contain a valid Mobile or Phone number."
+        };
+    }
+
+    const providerResponse = await sendToAuthkey(payload);
+
+    return {
+        status: "sent",
+        recordId: record?.id || null,
+        providerResponse
+    };
+}
+
 async function sendRecordToContactList({ organizationId, module, record, listName, mappings = [] }) {
     assertSupportedModule(module);
 
@@ -254,27 +304,22 @@ async function sendRecordToContactList({ organizationId, module, record, listNam
     }
 
     const authkey = await getAuthkey(organizationId);
-    const payload = mapRecordToAuthkey(
-        record,
-        module,
+    const result = await sendPreparedRecord({
         authkey,
-        normalizedListName,
-        normalizedMappings
-    );
+        module,
+        record,
+        listName: normalizedListName,
+        mappings: normalizedMappings
+    });
 
-    if (!payload.mobile) {
-        throw Object.assign(
-            new Error("The triggered CRM record does not contain a Mobile or Phone value."),
-            { statusCode: 400 }
-        );
+    if (result.status === "skipped") {
+        throw Object.assign(new Error(result.reason), { statusCode: 400 });
     }
 
-    const providerResponse = await sendToAuthkey(payload);
-
     return {
-        recordId: record?.id || null,
+        recordId: result.recordId,
         listName: normalizedListName,
-        providerResponse
+        providerResponse: result.providerResponse
     };
 }
 
@@ -289,7 +334,6 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
     }
 
     const normalizedListName = String(listName || "").trim();
-
     if (!normalizedListName) {
         throw Object.assign(
             new Error("Enter the Authkey contact list name."),
@@ -298,7 +342,6 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
     }
 
     const normalizedMappings = normalizeMappings(mappings);
-
     if (!normalizedMappings.length) {
         throw Object.assign(
             new Error("Select at least one Zoho field to send to Authkey."),
@@ -306,7 +349,10 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
         );
     }
 
-    const records = await fetchAllRecords(organizationId, module, normalizedMappings);
+    const [authkey, records] = await Promise.all([
+        getAuthkey(organizationId),
+        fetchAllRecords(organizationId, module, normalizedMappings)
+    ]);
 
     const summary = {
         success: true,
@@ -322,28 +368,31 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
 
     for (const record of records) {
         try {
-            await sendRecordToContactList({
-                organizationId,
+            const result = await sendPreparedRecord({
+                authkey,
                 module,
                 record,
                 listName: normalizedListName,
                 mappings: normalizedMappings
             });
-            summary.sent += 1;
-        } catch (error) {
-            const failure = {
-                recordId: record.id,
-                reason: error.message,
-                providerResponse: error.providerResponse || null
-            };
 
-            if (error.message.includes("does not contain a Mobile or Phone")) {
-                summary.skipped += 1;
-                summary.failures.push({ ...failure, type: "skipped" });
+            if (result.status === "sent") {
+                summary.sent += 1;
             } else {
-                summary.failed += 1;
-                summary.failures.push({ ...failure, type: "failed" });
+                summary.skipped += 1;
+                summary.failures.push({
+                    recordId: result.recordId,
+                    reason: result.reason,
+                    type: "skipped"
+                });
             }
+        } catch (error) {
+            summary.failed += 1;
+            summary.failures.push({
+                recordId: record?.id || null,
+                reason: String(error.message || "Authkey rejected the contact."),
+                type: "failed"
+            });
         }
     }
 
