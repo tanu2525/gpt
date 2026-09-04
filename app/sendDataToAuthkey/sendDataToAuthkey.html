@@ -49,7 +49,7 @@
         </section>
 
         <section id="configView" hidden>
-            <header class="page-header">
+            <header class="page-header config-page-header">
                 <div>
                     <button id="backBtn" class="link-btn">← Back to History</button>
                     <h2>Configure Data Transfer</h2>
@@ -57,32 +57,49 @@
                 </div>
             </header>
 
-            <div class="form-card">
-                <label for="moduleSelect">Zoho CRM Module</label>
-                <select id="moduleSelect">
-                    <option value="Leads">Leads</option>
-                    <option value="Contacts">Contacts</option>
-                    <option value="Accounts">Accounts</option>
-                </select>
+            <section class="form-card basic-card">
+                <div class="section-heading">
+                    <div>
+                        <h3>Basic Configuration</h3>
+                        <p>Select the CRM module and destination contact list.</p>
+                    </div>
+                </div>
 
-                <label for="listNameInput" class="top-label">Authkey Contact List Name</label>
-                <input id="listNameInput" type="text" placeholder="Example: testsharma" autocomplete="off">
-                <p class="field-help">Enter the exact name of the existing contact list in your Authkey account.</p>
+                <div class="basic-grid">
+                    <div class="field-group">
+                        <label for="moduleSelect">Zoho CRM Module <span>*</span></label>
+                        <select id="moduleSelect">
+                            <option value="Leads">Leads</option>
+                            <option value="Contacts">Contacts</option>
+                            <option value="Accounts">Accounts</option>
+                        </select>
+                    </div>
 
+                    <div class="field-group">
+                        <label for="listNameInput">Authkey Contact List Name <span>*</span></label>
+                        <input id="listNameInput" type="text" placeholder="Enter contact list name" autocomplete="off">
+                        <p class="field-help">Enter the exact name of the existing contact list in your Authkey account.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="form-card mapping-card">
                 <div class="mapping-header">
-                    <h3>Field Mapping</h3>
-                    <span>Select a Zoho field and the Authkey payload field.</span>
+                    <div>
+                        <h3>Field Mapping</h3>
+                        <span>Map Zoho CRM fields to Authkey payload fields.</span>
+                    </div>
+                    <button id="addFieldBtn" type="button" class="secondary-btn">+ Add Field</button>
                 </div>
 
                 <div id="mappingRows"></div>
-                <button id="addFieldBtn" type="button" class="secondary-btn">+ Add Field</button>
 
                 <div class="actions">
                     <button id="sendBtn" type="button" class="primary-btn">Send Module Data</button>
                 </div>
 
                 <p id="configStatus" class="status"></p>
-            </div>
+            </section>
         </section>
     </main>
 
@@ -93,13 +110,5 @@
     <script src="../common/auth.js"></script>
     <script src="../common/api.js"></script>
     <script src="sendDataToAuthkey.js"></script>
-    <script>
-        function isZohoConnected(connection) {
-            const value = connection?.data || connection?.connection || connection || {};
-            const connectedFlag = value.connected === true || value.connected === "true";
-            const hasAuthorizedDomain = Boolean(value.apiDomain || value.api_domain);
-            return connectedFlag || (value.success !== false && hasAuthorizedDomain);
-        }
-    </script>
 </body>
 </html>
