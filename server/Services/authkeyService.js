@@ -28,24 +28,27 @@ async function validateAuthkey(authkey) {
         );
 
         const data = response.data;
-        const text = typeof data === "string" ? data : JSON.stringify(data || {});
-        const normalized = text.toLowerCase();
 
-        if (response.status >= 200 && response.status < 300) {
-            const explicitlyInvalid =
-                normalized.includes("invalid authkey") ||
-                normalized.includes("invalid api key") ||
-                normalized.includes("authentication failed") ||
-                normalized.includes("unauthorized") ||
-                normalized.includes("not authorized") ||
-                normalized.includes("wrong authkey");
-
-            if (!explicitlyInvalid) {
-                return { valid: true };
-            }
+        if (
+            response.status >= 200 &&
+            response.status < 300 &&
+            data &&
+            data.success === true
+        ) {
+            return {
+                valid: true,
+                email: data.email
+                    ? String(data.email).trim().toLowerCase()
+                    : null,
+                balance: data.balance,
+                currency: data.currency
+            };
         }
 
-        return { valid: false };
+        return {
+            valid: false,
+            email: null
+        };
     } catch (error) {
         throw Object.assign(
             new Error("Unable to validate Authkey right now. Please try again."),
