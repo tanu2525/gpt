@@ -49,7 +49,6 @@ async function initialize(data = {}) {
         document.getElementById("syncBtn").disabled = false;
         setStatus(`Ready to send all ${moduleName} records to Authkey.`);
     } catch (error) {
-        console.error(error);
         setStatus(error.message || "Unable to verify Authkey configuration.", true);
     }
 }
@@ -91,7 +90,6 @@ async function syncModule() {
             setStatus(`Successfully sent all ${result.sent} ${moduleName} records to Authkey.`);
         }
     } catch (error) {
-        console.error(error);
         setStatus(error.message || "Bulk sync failed.", true);
     } finally {
         button.disabled = false;
