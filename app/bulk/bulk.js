@@ -35,14 +35,12 @@ ZOHO.embeddedApp.on("PageLoad", async data => {
         currentModule = resolveModuleName(data);
         selectedIds = getSelectedRecordIds(data);
         setRecordCount(selectedIds.length, getModuleLabel());
-
         crmFields = await getCrmFields(currentModule);
         selectedRecords = await getCrmRecords(selectedIds, currentModule);
         await refreshTemplates();
         renderRecordList();
         updateSummary();
     } catch (error) {
-        console.error(error);
         setStatus(error.message, "progress");
     }
 });
