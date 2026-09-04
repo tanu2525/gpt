@@ -9,6 +9,13 @@ const authkeySchema = new mongoose.Schema(
             index: true
         },
 
+        email: {
+            type: String,
+            required: true,
+            trim: true,
+            lowercase: true
+        },
+
         encryptedCredentials: {
             type: String,
             required: true
