@@ -1,5 +1,12 @@
 * { box-sizing: border-box; }
 
+/* The browser's default [hidden] rule can be overridden by .connection-card
+   because this stylesheet explicitly sets display:flex. Keep the entire
+   connection section completely hidden when JavaScript marks it as hidden. */
+#zohoConnectionCard[hidden] {
+    display: none !important;
+}
+
 body {
     margin: 0;
     font-family: Arial, sans-serif;
