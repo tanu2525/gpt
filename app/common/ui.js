@@ -3,6 +3,11 @@ function setStatus(message, elementId = "sendStatus") {
     if (element) element.textContent = message;
 }
 
+function setRecordCount(count, moduleName = "Leads") {
+    const element = document.getElementById("leadCount") || document.getElementById("recordCount");
+    if (element) element.textContent = `Selected ${moduleName}: ${count}`;
+}
+
 function setLeadCount(count) {
-    document.getElementById("leadCount").textContent = `Selected Leads : ${count}`;
+    setRecordCount(count, "Leads");
 }
