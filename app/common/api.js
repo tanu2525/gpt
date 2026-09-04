@@ -4,9 +4,6 @@ const AUTHKEY_EXTENSION_API_BASE_URL =
 
 async function requestJson(url, options = {}) {
     const apiUrl = getApiUrl(url);
-
-    console.log("Authkey API request:", apiUrl);
-
     const response = await fetch(apiUrl, options);
     const responseText = await response.text();
     let data = null;
