@@ -1,85 +1,34 @@
 <!DOCTYPE html>
-
 <html>
-
 <head>
-
-<title>Bulk Messaging</title>
-
-<link rel="stylesheet"
-href="bulk.css">
-
+    <title>Bulk Messaging</title>
+    <link rel="stylesheet" href="bulk.css">
 </head>
-
 <body>
 
-
 <div id="leadCount"></div>
-
 <div id="leadList"></div>
-
 <div id="summary"></div>
 <hr>
 
-<label>
-
-Channel
-
-</label>
-
+<label>Channel</label>
 <select id="channel">
-
-<option value="whatsapp">
-
-WhatsApp
-
-</option>
-
-<option value="sms">
-
-SMS
-
-</option>
-
-<option value="email">
-
-Email
-
-</option>
-
-<option value="voice">
-
-Voice
-
-</option>
-
-<option value="rcs">
-
-RCS
-
-</option>
-
+    <option value="whatsapp">WhatsApp</option>
+    <option value="sms">SMS</option>
+    <option value="email">Email</option>
+    <option value="voice">Voice</option>
+    <option value="rcs">RCS</option>
 </select>
 
 <br><br>
 
-<label>
+<label>Template</label>
+<select id="templateSelect"></select>
 
-Template
-
-</label>
-
-<select id="templateSelect">
-
-</select>
 <br><br>
+
 <label>Template Preview</label>
-
-<textarea
-    id="preview"
-    rows="8"
-    readonly>
-</textarea>
+<textarea id="preview" rows="8" readonly></textarea>
 
 <br><br>
 
@@ -87,18 +36,11 @@ Template
 
 <br>
 
-<button id="sendBtn">
-    Send to Selected Leads
-</button>
+<button id="sendBtn">Send to Selected Records</button>
 
-<div id="progress">
+<div id="progress"></div>
 
-</div>
-
-<script
-src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js">
-</script>
-
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
 <script src="../common/auth.js"></script>
 <script src="../common/api.js"></script>
 <script src="../common/lead.js"></script>
@@ -106,11 +48,7 @@ src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js">
 <script src="../common/variables.js"></script>
 <script src="../common/ui.js"></script>
 <script src="../common/preview.js"></script>
-
-<script src="bulk.js">
-
-</script>
+<script src="bulk.js"></script>
 
 </body>
-
 </html>
