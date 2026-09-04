@@ -1,5 +1,6 @@
 const axios = require("axios");
 const messageService = require("./messageService");
+const contactListService = require("./zohoAuthkeyBulkService");
 const WorkflowConfig = require("../models/WorkflowConfig");
 const zohoOAuthService = require("./zohoOAuthService");
 const zohoCrmService = require("./zohoCrmService");
@@ -273,6 +274,25 @@ exports.trigger = async function(workflowId, payload = {}) {
         );
     }
 
+    if (workflow.actionType === "contact_list") {
+        const result = await contactListService.sendRecordToContactList({
+            organizationId: workflow.organizationId,
+            module: workflow.module,
+            record,
+            listName: workflow.contactListName,
+            mappings: workflow.contactMappings
+        });
+
+        return {
+            workflowId: workflow._id,
+            actionType: "contact_list",
+            recordId,
+            listName: workflow.contactListName,
+            status: "sent",
+            providerResponse: result.providerResponse
+        };
+    }
+
     const recipient = await resolveRecipient({
         record,
         recipientField: workflow.recipientField,
@@ -310,6 +330,7 @@ exports.trigger = async function(workflowId, payload = {}) {
 
     return {
         workflowId: workflow._id,
+        actionType: "message",
         logId: sent.log?._id,
         channel: workflow.channel,
         status: sent.log?.status || "accepted"
