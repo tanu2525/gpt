@@ -2,6 +2,11 @@ let moduleFields = [];
 let zohoConnection = null;
 const SUPPORTED_MODULES = ["Leads", "Contacts", "Accounts"];
 
+function isZohoConnected(connection) {
+    return connection?.connected === true ||
+        (connection?.success === true && Boolean(connection?.apiDomain));
+}
+
 function setStatus(elementId, message = "", type = "") {
     const element = document.getElementById(elementId);
     element.textContent = message;
@@ -18,15 +23,20 @@ function setZohoConnectionUi(connection) {
     const card = document.getElementById("zohoConnectionCard");
     const button = document.getElementById("connectZohoBtn");
     const details = document.getElementById("zohoConnectionStatus");
+    const connected = isZohoConnected(connection);
 
     zohoConnection = connection;
 
-    if (connection?.connected) {
+    // A connected organization does not need the connection prompt.
+    // Hide both the card and the button so the user only sees it when action is required.
+    if (connected) {
         card.hidden = true;
+        button.hidden = true;
         return;
     }
 
     card.hidden = false;
+    button.hidden = false;
     button.textContent = "Connect Zoho CRM";
     details.textContent =
         "Connect this Zoho CRM organization before selecting CRM fields or sending module records to Authkey.";
@@ -73,7 +83,7 @@ async function connectZoho() {
 async function requireZohoConnection() {
     const connection = await checkZohoConnection();
 
-    if (!connection?.connected) {
+    if (!isZohoConnected(connection)) {
         throw new Error("Connect Zoho CRM before sending module data to Authkey.");
     }
 
