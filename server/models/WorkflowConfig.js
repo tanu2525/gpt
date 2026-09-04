@@ -1,5 +1,19 @@
 const mongoose = require("mongoose");
 
+const ContactMappingSchema = new mongoose.Schema(
+    {
+        zohoField: {
+            type: String,
+            required: true
+        },
+        payloadPath: {
+            type: String,
+            required: true
+        }
+    },
+    { _id: false }
+);
+
 const WorkflowConfigSchema = new mongoose.Schema(
     {
         organizationId: {
@@ -31,14 +45,21 @@ const WorkflowConfigSchema = new mongoose.Schema(
             enum: ["create", "edit"]
         },
 
+        actionType: {
+            type: String,
+            required: true,
+            enum: ["message", "contact_list"],
+            default: "message"
+        },
+
         channel: {
             type: String,
-            required: true
+            default: ""
         },
 
         templateId: {
             type: String,
-            required: true
+            default: ""
         },
 
         templateName: {
@@ -48,12 +69,22 @@ const WorkflowConfigSchema = new mongoose.Schema(
 
         recipientField: {
             type: String,
-            required: true
+            default: ""
         },
 
         variables: {
             type: Object,
             default: {}
+        },
+
+        contactListName: {
+            type: String,
+            default: ""
+        },
+
+        contactMappings: {
+            type: [ContactMappingSchema],
+            default: []
         },
 
         enabled: {
@@ -62,7 +93,6 @@ const WorkflowConfigSchema = new mongoose.Schema(
             index: true
         },
 
-        // Zoho automation resources created for this workflow.
         zohoModuleId: String,
         zohoWebhookId: {
             type: String,
@@ -72,11 +102,9 @@ const WorkflowConfigSchema = new mongoose.Schema(
             type: String,
             index: true
         },
-        // Always populated from the OAuth response; never default to a data center.
         zohoApiDomain: String,
         webhookUrl: String,
 
-        // Each workflow has its own secret. Only its SHA-256 hash is stored.
         webhookSecretHash: {
             type: String,
             select: false
