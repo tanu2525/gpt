@@ -109,7 +109,7 @@ function mapRecordToAuthkey(record, moduleName, authkey, listName, mappings = []
         }
     }
 
-    if (!payload.mobile) {
+    if (!payload.mobile && config) {
         payload.mobile = getFirstValue(record, config.mobileFields);
     }
 
@@ -218,6 +218,44 @@ async function sendToAuthkey(payload) {
     return response.data;
 }
 
+async function sendRecordToContactList({ organizationId, module, record, listName, mappings = [] }) {
+    assertSupportedModule(module);
+
+    const normalizedListName = String(listName || "").trim();
+    if (!normalizedListName) {
+        throw Object.assign(new Error("Authkey contact list name is required."), { statusCode: 400 });
+    }
+
+    const normalizedMappings = normalizeMappings(mappings);
+    if (!normalizedMappings.length) {
+        throw Object.assign(new Error("At least one contact field mapping is required."), { statusCode: 400 });
+    }
+
+    const authkey = await getAuthkey(organizationId);
+    const payload = mapRecordToAuthkey(
+        record,
+        module,
+        authkey,
+        normalizedListName,
+        normalizedMappings
+    );
+
+    if (!payload.mobile) {
+        throw Object.assign(
+            new Error("The triggered CRM record does not contain a Mobile or Phone value."),
+            { statusCode: 400 }
+        );
+    }
+
+    const providerResponse = await sendToAuthkey(payload);
+
+    return {
+        recordId: record?.id || null,
+        listName: normalizedListName,
+        providerResponse
+    };
+}
+
 async function syncModule({ organizationId, module, listName, mappings = [] }) {
     assertSupportedModule(module);
 
@@ -246,7 +284,6 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
         );
     }
 
-    const authkey = await getAuthkey(organizationId);
     const records = await fetchAllRecords(organizationId, module, normalizedMappings);
 
     const summary = {
@@ -262,34 +299,31 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
     };
 
     for (const record of records) {
-        const payload = mapRecordToAuthkey(
-            record,
-            module,
-            authkey,
-            normalizedListName,
-            normalizedMappings
-        );
-
-        if (!payload.mobile) {
-            summary.skipped += 1;
-            summary.failures.push({
-                recordId: record.id,
-                reason: "No Mobile or Phone value found.",
-                type: "skipped"
-            });
-            continue;
-        }
-
         try {
-            await sendToAuthkey(payload);
+            await sendRecordToContactList({
+                organizationId,
+                module,
+                record,
+                listName: normalizedListName,
+                mappings: normalizedMappings
+            });
             summary.sent += 1;
         } catch (error) {
-            summary.failed += 1;
-            summary.failures.push({
-                recordId: record.id,
-                reason: error.message,
-                type: "failed"
-            });
+            if (error.message.includes("does not contain a Mobile or Phone")) {
+                summary.skipped += 1;
+                summary.failures.push({
+                    recordId: record.id,
+                    reason: error.message,
+                    type: "skipped"
+                });
+            } else {
+                summary.failed += 1;
+                summary.failures.push({
+                    recordId: record.id,
+                    reason: error.message,
+                    type: "failed"
+                });
+            }
         }
     }
 
@@ -299,6 +333,7 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
 
 module.exports = {
     syncModule,
+    sendRecordToContactList,
     fetchAllRecords,
     mapRecordToAuthkey,
     normalizeMappings,
