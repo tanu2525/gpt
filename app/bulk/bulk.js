@@ -1,18 +1,45 @@
 let selectedIds = [];
-let selectedLeads = [];
+let selectedRecords = [];
 let crmFields = [];
+let currentModule = "Leads";
+
+function resolveModuleName(data = {}) {
+    const value = data.Entity || data.Module || data.EntityName || "Leads";
+    const normalized = String(value).trim().toLowerCase();
+
+    const modules = {
+        lead: "Leads",
+        leads: "Leads",
+        contact: "Contacts",
+        contacts: "Contacts",
+        account: "Accounts",
+        accounts: "Accounts"
+    };
+
+    return modules[normalized] || "Leads";
+}
+
+function getSelectedRecordIds(data = {}) {
+    const ids = data.EntityId || data.EntityIds || data.RecordID || data.RecordId || [];
+    return Array.isArray(ids) ? ids : (ids ? [ids] : []);
+}
+
+function getModuleLabel() {
+    return currentModule === "Accounts" ? "Accounts" : currentModule;
+}
 
 ZOHO.embeddedApp.on("PageLoad", async data => {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
 
-        selectedIds = Array.isArray(data.EntityId) ? data.EntityId : (data.EntityId ? [data.EntityId] : []);
-        setLeadCount(selectedIds.length);
+        currentModule = resolveModuleName(data);
+        selectedIds = getSelectedRecordIds(data);
+        setRecordCount(selectedIds.length, getModuleLabel());
 
-        crmFields = await getCrmFields();
-        selectedLeads = await getCrmRecords(selectedIds);
+        crmFields = await getCrmFields(currentModule);
+        selectedRecords = await getCrmRecords(selectedIds, currentModule);
         await refreshTemplates();
-        renderLeadList();
+        renderRecordList();
         updateSummary();
     } catch (error) {
         console.error(error);
@@ -32,20 +59,22 @@ async function refreshTemplates() {
 async function sendBulkMessages() {
     const channel = document.getElementById("channel").value;
     const selectedTemplate = document.getElementById("templateSelect").selectedOptions[0];
-    const leads = selectedLeads.filter(lead => getRecipientForChannel(lead, channel));
+    const records = selectedRecords.filter(record => getRecipientForChannel(record, channel));
 
     if (!selectedTemplate?.value) throw new Error("Choose a template first.");
+    if (!records.length) throw new Error(`No selected ${currentModule} records have a compatible recipient.`);
 
     const result = await requestJson("/api/bulk/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             organizationId: await getOrganizationId(),
+            module: currentModule,
             channel,
             templateId: selectedTemplate.value,
             templateName: selectedTemplate.textContent,
             variables: collectTemplateVariables(),
-            leads
+            records
         })
     });
 
@@ -72,32 +101,34 @@ async function resetBulkForm() {
         if (container) container.replaceChildren();
     });
 
-    const preview = document.getElementById("templatePreview");
+    const preview = document.getElementById("preview") || document.getElementById("templatePreview");
     if (preview) preview.value = "";
 
     await refreshTemplates();
-    renderLeadList();
+    renderRecordList();
     updateSummary();
 }
 
-function renderLeadList() {
+function renderRecordList() {
     const channel = document.getElementById("channel").value;
-    const list = document.getElementById("leadList");
+    const list = document.getElementById("leadList") || document.getElementById("recordList");
+    if (!list) return;
+
     list.replaceChildren();
 
-    selectedLeads.forEach((lead, index) => {
+    selectedRecords.forEach((record, index) => {
         const item = document.createElement("div");
         item.className = "lead-item";
         const header = document.createElement("div");
         header.className = "lead-header";
         const name = document.createElement("b");
-        name.textContent = getLeadDisplayName(lead);
+        name.textContent = getRecordDisplayName(record, currentModule);
         const removeButton = document.createElement("button");
         removeButton.className = "removeBtn";
         removeButton.textContent = "×";
-        removeButton.addEventListener("click", () => removeLead(index));
+        removeButton.addEventListener("click", () => removeRecord(index));
         const contact = document.createElement("div");
-        contact.textContent = getRecipientForChannel(lead, channel) || "-";
+        contact.textContent = getRecipientForChannel(record, channel) || "-";
         header.append(name, removeButton);
         item.append(header, contact);
         list.appendChild(item);
@@ -106,24 +137,32 @@ function renderLeadList() {
 
 function updateSummary() {
     const channel = document.getElementById("channel").value;
-    const valid = selectedLeads.filter(lead => getRecipientForChannel(lead, channel)).length;
+    const valid = selectedRecords.filter(record => getRecipientForChannel(record, channel)).length;
     const summary = document.getElementById("summary");
-    summary.textContent = `Valid: ${valid} | Missing contact: ${selectedLeads.length - valid}`;
-    document.getElementById("sendBtn").disabled = valid === 0;
+    if (summary) summary.textContent = `Valid: ${valid} | Missing contact: ${selectedRecords.length - valid}`;
+
+    const sendButton = document.getElementById("sendBtn");
+    if (sendButton) {
+        sendButton.disabled = valid === 0;
+        sendButton.textContent = `Send to Selected ${currentModule}`;
+    }
 }
 
-function removeLead(index) {
-    selectedLeads.splice(index, 1);
+function removeRecord(index) {
+    selectedRecords.splice(index, 1);
     selectedIds.splice(index, 1);
-    setLeadCount(selectedLeads.length);
-    renderLeadList();
+    setRecordCount(selectedRecords.length, getModuleLabel());
+    renderRecordList();
     updateSummary();
 }
 
 function renderProgress(result) {
     const progress = document.getElementById("progress");
+    if (!progress) return;
+
     progress.replaceChildren();
-    progress.append(`Bulk Send Completed — Total: ${result.total}, Sent: ${result.successCount}, Failed: ${result.failedCount}`);
+    progress.append(`Bulk Send Completed — Total: ${result.total}, Sent: ${result.acceptedCount || result.successCount || 0}, Failed: ${result.failedCount || 0}, Skipped: ${result.skippedCount || 0}`);
+
     (result.results || []).forEach(item => {
         const row = document.createElement("div");
         row.textContent = `${item.name} — ${item.status}`;
@@ -133,7 +172,7 @@ function renderProgress(result) {
 
 document.getElementById("channel").addEventListener("change", () => {
     refreshTemplates()
-        .then(() => { renderLeadList(); updateSummary(); })
+        .then(() => { renderRecordList(); updateSummary(); })
         .catch(error => setStatus(error.message, "progress"));
 });
 document.getElementById("templateSelect").addEventListener("change", previewSelectedTemplate);
