@@ -1,6 +1,27 @@
 const zohoAuthkeyBulkService = require("../Services/zohoAuthkeyBulkService");
 const AuthkeySyncHistory = require("../models/AuthkeySyncHistory");
 
+function createHistoryPayload(organizationId, module, result) {
+    return {
+        organizationId,
+        module,
+        listName: result.listName,
+        mappings: result.mappings,
+        total: result.total,
+        sent: result.sent,
+        skipped: result.skipped,
+        failed: result.failed,
+        status: result.success
+            ? "success"
+            : result.sent > 0 ? "partial" : "failed",
+        failures: result.failures.slice(0, 100).map(item => ({
+            recordId: item.recordId ? String(item.recordId) : "",
+            reason: String(item.reason || "Unknown error"),
+            type: String(item.type || "failed")
+        }))
+    };
+}
+
 async function syncModule(req, res) {
     try {
         const {
@@ -17,27 +38,16 @@ async function syncModule(req, res) {
             mappings
         });
 
-        // Store only transfer summary/history metadata.
-        // Zoho record fields and the Authkey contact payload are never saved
-        // in our MongoDB database.
-        const history = await AuthkeySyncHistory.create({
-            organizationId,
-            module,
-            listName: result.listName,
-            mappings: result.mappings,
-            total: result.total,
-            sent: result.sent,
-            skipped: result.skipped,
-            failed: result.failed,
-            status: result.success
-                ? "success"
-                : result.sent > 0 ? "partial" : "failed",
-            failures: result.failures.slice(0, 100).map(item => ({
-                recordId: item.recordId,
-                reason: item.reason || "Unknown error",
-                type: item.type
-            }))
-        });
+        let historyId = null;
+
+        try {
+            const history = await AuthkeySyncHistory.create(
+                createHistoryPayload(organizationId, module, result)
+            );
+            historyId = history._id;
+        } catch (historyError) {
+            console.error("Unable to save Authkey sync history:", historyError.message);
+        }
 
         return res.status(result.success ? 200 : 207).json({
             success: result.success,
@@ -47,7 +57,12 @@ async function syncModule(req, res) {
             sent: result.sent,
             skipped: result.skipped,
             failed: result.failed,
-            historyId: history._id
+            failures: result.failures.slice(0, 20).map(item => ({
+                recordId: item.recordId,
+                reason: item.reason,
+                type: item.type
+            })),
+            historyId
         });
     } catch (error) {
         console.error(
@@ -57,7 +72,7 @@ async function syncModule(req, res) {
 
         return res.status(error.statusCode || 500).json({
             success: false,
-            message: error.message
+            message: error.message || "Unable to send CRM records to Authkey."
         });
     }
 }
