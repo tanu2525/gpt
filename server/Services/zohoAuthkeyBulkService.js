@@ -3,7 +3,6 @@ const axios = require("axios");
 const Authkey = require("../models/Authkey");
 const zohoOAuthService = require("./zohoOAuthService");
 const { decrypt } = require("../utils/crypto");
-const { getBulkConcurrency } = require("../utils/requestValidation");
 
 const AUTHKEY_ADD_LIST_URL =
     process.env.AUTHKEY_ADD_LIST_DATA_URL ||
@@ -42,11 +41,7 @@ async function getAuthkey(organizationId) {
 function getFirstValue(record, fields) {
     for (const field of fields) {
         const value = record?.[field];
-        if (
-            value !== undefined &&
-            value !== null &&
-            String(value).trim() !== ""
-        ) {
+        if (value !== undefined && value !== null && String(value).trim() !== "") {
             return String(value).trim();
         }
     }
@@ -97,15 +92,8 @@ function setByPath(target, path, value) {
     current[parts[parts.length - 1]] = value;
 }
 
-function mapRecordToAuthkey(
-    record,
-    moduleName,
-    authkey,
-    listName,
-    mappings = []
-) {
+function mapRecordToAuthkey(record, moduleName, authkey, listName, mappings = []) {
     const config = MODULE_CONFIG[moduleName];
-
     const payload = {
         authkey,
         list_name: listName,
@@ -135,27 +123,18 @@ function getZohoCrmBaseUrl(apiDomain) {
         .replace(/\/$/, "");
 
     if (!baseUrl) {
-        throw new Error(
-            "Zoho API domain is required for bulk record fetching."
-        );
+        throw new Error("Zoho API domain is required for bulk record fetching.");
     }
 
     return `${baseUrl}/crm/v8`;
 }
 
-async function fetchRecordsPage(
-    accessToken,
-    apiDomain,
-    moduleName,
-    params
-) {
+async function fetchRecordsPage(accessToken, apiDomain, moduleName, params) {
     const response = await axios.get(
         `${getZohoCrmBaseUrl(apiDomain)}/${encodeURIComponent(moduleName)}`,
         {
             params,
-            headers: {
-                Authorization: `Zoho-oauthtoken ${accessToken}`
-            },
+            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
             timeout: 30000
         }
     );
@@ -169,21 +148,16 @@ function getRequestedZohoFields(moduleName, mappings = []) {
         .filter(Boolean);
 
     const fallbackFields = MODULE_CONFIG[moduleName]?.mobileFields || [];
-
     return [...new Set([...selectedFields, ...fallbackFields])];
 }
 
 async function fetchAllRecords(organizationId, moduleName, mappings = []) {
-    const { accessToken, apiDomain } =
-        await zohoOAuthService.getAccessToken(organizationId);
-
+    const { accessToken, apiDomain } = await zohoOAuthService.getAccessToken(organizationId);
     const fields = getRequestedZohoFields(moduleName, mappings);
 
     if (!fields.length) {
         throw Object.assign(
-            new Error(
-                "Select at least one Zoho CRM field before fetching records."
-            ),
+            new Error("Select at least one Zoho CRM field before fetching records."),
             { statusCode: 400 }
         );
     }
@@ -194,15 +168,8 @@ async function fetchAllRecords(organizationId, moduleName, mappings = []) {
 
     while (true) {
         const params = pageToken
-            ? {
-                page_token: pageToken,
-                fields: fields.join(",")
-            }
-            : {
-                per_page: 200,
-                page,
-                fields: fields.join(",")
-            };
+            ? { page_token: pageToken, fields: fields.join(",") }
+            : { per_page: 200, page, fields: fields.join(",") };
 
         const response = await fetchRecordsPage(
             accessToken,
@@ -231,9 +198,7 @@ async function fetchAllRecords(organizationId, moduleName, mappings = []) {
 
 async function sendToAuthkey(payload) {
     const response = await axios.post(AUTHKEY_ADD_LIST_URL, payload, {
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         timeout: 15000,
         validateStatus: () => true
     });
@@ -253,12 +218,7 @@ async function sendToAuthkey(payload) {
     return response.data;
 }
 
-async function syncModule({
-    organizationId,
-    module,
-    listName,
-    mappings = []
-}) {
+async function syncModule({ organizationId, module, listName, mappings = [] }) {
     assertSupportedModule(module);
 
     if (!organizationId) {
@@ -287,11 +247,7 @@ async function syncModule({
     }
 
     const authkey = await getAuthkey(organizationId);
-    const records = await fetchAllRecords(
-        organizationId,
-        module,
-        normalizedMappings
-    );
+    const records = await fetchAllRecords(organizationId, module, normalizedMappings);
 
     const summary = {
         success: true,
@@ -305,66 +261,35 @@ async function syncModule({
         failures: []
     };
 
-    const concurrency = getBulkConcurrency(
-        process.env.AUTHKEY_BULK_CONCURRENCY,
-        5
-    );
-
-    for (let start = 0; start < records.length; start += concurrency) {
-        const batch = records.slice(start, start + concurrency);
-
-        const results = await Promise.all(
-            batch.map(async record => {
-                const payload = mapRecordToAuthkey(
-                    record,
-                    module,
-                    authkey,
-                    normalizedListName,
-                    normalizedMappings
-                );
-
-                if (!payload.mobile) {
-                    return {
-                        type: "skipped",
-                        recordId: record.id,
-                        reason: "No Mobile or Phone value found."
-                    };
-                }
-
-                try {
-                    await sendToAuthkey(payload);
-                    return {
-                        type: "sent",
-                        recordId: record.id
-                    };
-                } catch (error) {
-                    return {
-                        type: "failed",
-                        recordId: record.id,
-                        error: error.message
-                    };
-                }
-            })
+    for (const record of records) {
+        const payload = mapRecordToAuthkey(
+            record,
+            module,
+            authkey,
+            normalizedListName,
+            normalizedMappings
         );
 
-        for (const result of results) {
-            if (result.type === "sent") {
-                summary.sent += 1;
-            } else if (result.type === "skipped") {
-                summary.skipped += 1;
-                summary.failures.push({
-                    recordId: result.recordId,
-                    reason: result.reason,
-                    type: result.type
-                });
-            } else {
-                summary.failed += 1;
-                summary.failures.push({
-                    recordId: result.recordId,
-                    reason: result.error,
-                    type: result.type
-                });
-            }
+        if (!payload.mobile) {
+            summary.skipped += 1;
+            summary.failures.push({
+                recordId: record.id,
+                reason: "No Mobile or Phone value found.",
+                type: "skipped"
+            });
+            continue;
+        }
+
+        try {
+            await sendToAuthkey(payload);
+            summary.sent += 1;
+        } catch (error) {
+            summary.failed += 1;
+            summary.failures.push({
+                recordId: record.id,
+                reason: error.message,
+                type: "failed"
+            });
         }
     }
 
