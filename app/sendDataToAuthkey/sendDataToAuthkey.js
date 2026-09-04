@@ -1,4 +1,5 @@
 let moduleFields = [];
+let zohoConnection = null;
 const SUPPORTED_MODULES = ["Leads", "Contacts", "Accounts"];
 
 function setStatus(elementId, message = "", type = "") {
@@ -13,14 +14,79 @@ function showOnly(viewId) {
     });
 }
 
+function setZohoConnectionUi(connection) {
+    const card = document.getElementById("zohoConnectionCard");
+    const button = document.getElementById("connectZohoBtn");
+    const details = document.getElementById("zohoConnectionStatus");
+
+    zohoConnection = connection;
+
+    if (connection?.connected) {
+        card.hidden = true;
+        return;
+    }
+
+    card.hidden = false;
+    button.textContent = "Connect Zoho CRM";
+    details.textContent = "Connect this Zoho CRM organization before selecting CRM fields or sending module records to Authkey.";
+}
+
+async function checkZohoConnection() {
+    const organizationId = await getOrganizationId();
+    const result = await requestJson(
+        `/api/workflow/zoho/connection?organizationId=${encodeURIComponent(organizationId)}`
+    );
+
+    setZohoConnectionUi(result);
+    return result;
+}
+
+async function connectZoho() {
+    try {
+        const context = await getOrganizationContext();
+        const params = new URLSearchParams({ organizationId: context.organizationId });
+
+        if (context.apiDomain) params.set("apiDomain", context.apiDomain);
+        if (context.countryCode) params.set("countryCode", context.countryCode);
+
+        const result = await requestJson(`/api/workflow/zoho/oauth?${params.toString()}`);
+
+        if (!result.authorizationUrl) {
+            throw new Error("Zoho authorization URL was not generated.");
+        }
+
+        window.open(result.authorizationUrl, "_blank");
+        document.getElementById("zohoConnectionStatus").textContent =
+            "Complete Zoho authorization in the opened window, then return here and reload the page.";
+    } catch (error) {
+        document.getElementById("zohoConnectionStatus").textContent = error.message;
+    }
+}
+
+async function requireZohoConnection() {
+    const connection = await checkZohoConnection();
+    if (!connection?.connected) {
+        throw new Error("Connect Zoho CRM before sending module data to Authkey.");
+    }
+    return connection;
+}
+
 function showHistory() {
     showOnly("historyView");
     loadHistory().catch(error => setStatus("historyStatus", error.message, "error"));
 }
 
-function showConfiguration() {
-    showOnly("configView");
-    setStatus("configStatus");
+async function showConfiguration() {
+    try {
+        setStatus("historyStatus");
+        await requireZohoConnection();
+        showOnly("configView");
+        setStatus("configStatus");
+        await loadModuleFields();
+    } catch (error) {
+        showOnly("historyView");
+        setStatus("historyStatus", error.message, "error");
+    }
 }
 
 function createOption(value, label, selectedValue = "") {
@@ -138,6 +204,7 @@ async function sendData() {
     setStatus("configStatus", "Fetching Zoho records and sending selected fields to Authkey...");
 
     try {
+        await requireZohoConnection();
         const organizationId = await getOrganizationId();
         const result = await requestJson("/api/zoho/authkey/sync-module", {
             method: "POST",
@@ -239,8 +306,10 @@ async function loadHistoryDetails(historyId) {
 async function initialize() {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
-        await loadModuleFields();
-        await loadHistory();
+        await Promise.all([
+            checkZohoConnection(),
+            loadHistory()
+        ]);
     } catch (error) {
         console.error("Send Data to Authkey initialization error:", error);
         setStatus("historyStatus", error.message, "error");
@@ -248,7 +317,9 @@ async function initialize() {
     }
 }
 
-document.getElementById("openSyncBtn").addEventListener("click", showConfiguration);
+document.getElementById("openSyncBtn").addEventListener("click", () => {
+    showConfiguration();
+});
 document.getElementById("backBtn").addEventListener("click", showHistory);
 document.getElementById("detailsBackBtn").addEventListener("click", showHistory);
 document.getElementById("moduleSelect").addEventListener("change", () => {
@@ -258,6 +329,7 @@ document.getElementById("addFieldBtn").addEventListener("click", () => addMappin
 document.getElementById("sendBtn").addEventListener("click", () => {
     sendData().catch(error => setStatus("configStatus", error.message, "error"));
 });
+document.getElementById("connectZohoBtn").addEventListener("click", connectZoho);
 
 ZOHO.embeddedApp.on("PageLoad", initialize);
 ZOHO.embeddedApp.init();
