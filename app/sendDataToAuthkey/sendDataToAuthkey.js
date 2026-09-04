@@ -8,10 +8,20 @@ function getConnectionData(connection) {
 }
 
 function isZohoConnected(connection) {
-    const value = getConnectionData(connection);
-    return value.connected === true ||
-        value.connected === "true" ||
-        (connection?.success !== false && Boolean(value.apiDomain || value.api_domain));
+    if (!connection || typeof connection !== "object") return false;
+
+    const candidates = [connection, getConnectionData(connection)];
+
+    for (const value of candidates) {
+        if (!value || typeof value !== "object") continue;
+
+        if (value.connected === true || value.isConnected === true) return true;
+        if (value.connected === "true" || value.isConnected === "true") return true;
+        if (["connected", "active"].includes(String(value.status || "").toLowerCase())) return true;
+        if (value.apiDomain || value.api_domain) return true;
+    }
+
+    return false;
 }
 
 function setStatus(elementId, message = "", type = "") {
@@ -33,13 +43,17 @@ function setZohoConnectionUi(connection) {
     const connected = isZohoConnected(connection);
 
     zohoConnection = connection;
-    card.hidden = connected;
-    button.hidden = connected;
 
-    if (!connected) {
-        button.textContent = "Connect Zoho CRM";
-        details.textContent = "Connect this Zoho CRM organization before selecting CRM fields or sending module records to Authkey.";
+    if (connected) {
+        card.hidden = true;
+        button.hidden = true;
+        return;
     }
+
+    card.hidden = false;
+    button.hidden = false;
+    button.textContent = "Connect Zoho CRM";
+    details.textContent = "Connect this Zoho CRM organization before sending CRM records to Authkey.";
 }
 
 async function checkZohoConnection() {
@@ -295,12 +309,20 @@ async function loadHistory() {
 }
 
 async function initialize() {
-    document.getElementById("zohoConnectionCard").hidden = true;
+    const connectionCard = document.getElementById("zohoConnectionCard");
+    connectionCard.hidden = true;
 
     try {
         if (!(await ensureAuthkeyConfigured())) return;
-        await Promise.all([checkZohoConnection(), loadHistory()]);
+
+        const [connection] = await Promise.all([
+            checkZohoConnection(),
+            loadHistory()
+        ]);
+
+        setZohoConnectionUi(connection);
     } catch (error) {
+        connectionCard.hidden = true;
         setStatus("historyStatus", error.message, "error");
         setStatus("configStatus", error.message, "error");
     }
