@@ -20,7 +20,7 @@
             <header class="page-header">
                 <div>
                     <h2>Send Data to Authkey</h2>
-                    <p>View all Zoho CRM data transfers to Authkey.</p>
+                    <p>View the summary of Zoho CRM transfers to Authkey. CRM record data is not stored locally.</p>
                 </div>
                 <button id="openSyncBtn" class="primary-btn">Send Data to Authkey</button>
             </header>
@@ -33,12 +33,12 @@
                         <tr>
                             <th>Date & Time</th>
                             <th>Module</th>
+                            <th>Contact List</th>
                             <th>Total</th>
                             <th>Sent</th>
                             <th>Skipped</th>
                             <th>Failed</th>
                             <th>Status</th>
-                            <th>Details</th>
                         </tr>
                     </thead>
                     <tbody id="historyBody">
@@ -48,35 +48,12 @@
             </div>
         </section>
 
-        <section id="detailsView" hidden>
-            <header class="page-header">
-                <div>
-                    <button id="detailsBackBtn" class="link-btn">← Back to History</button>
-                    <h2>Transfer Details</h2>
-                    <p id="detailsSummary"></p>
-                </div>
-            </header>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Zoho Record ID</th>
-                            <th>Status</th>
-                            <th>Data Sent to Authkey</th>
-                            <th>Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody id="detailsBody"></tbody>
-                </table>
-            </div>
-        </section>
-
         <section id="configView" hidden>
             <header class="page-header">
                 <div>
                     <button id="backBtn" class="link-btn">← Back to History</button>
                     <h2>Configure Data Transfer</h2>
-                    <p>Select a Zoho CRM module and choose exactly which fields should be sent to Authkey.</p>
+                    <p>Select a Zoho CRM module, choose the Authkey contact list, and map exactly which fields should be sent.</p>
                 </div>
             </header>
 
@@ -87,6 +64,15 @@
                     <option value="Contacts">Contacts</option>
                     <option value="Accounts">Accounts</option>
                 </select>
+
+                <label for="listNameInput" class="top-label">Authkey Contact List Name</label>
+                <input
+                    id="listNameInput"
+                    type="text"
+                    placeholder="Example: testsharma"
+                    autocomplete="off"
+                >
+                <p class="field-help">Enter the exact name of the existing contact list in your Authkey account.</p>
 
                 <div class="mapping-header">
                     <h3>Field Mapping</h3>
