@@ -1,5 +1,6 @@
 *{box-sizing:border-box}
 body{margin:0;background:#f6f8fc;color:#172033;font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px}
+[hidden],.connection-card[hidden]{display:none!important}
 .page{max-width:1180px;margin:0 auto;padding:28px}
 .page-header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:20px}
 .page-header h2{margin:0 0 6px;font-size:26px}
