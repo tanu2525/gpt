@@ -66,12 +66,7 @@
                 </select>
 
                 <label for="listNameInput" class="top-label">Authkey Contact List Name</label>
-                <input
-                    id="listNameInput"
-                    type="text"
-                    placeholder="Example: testsharma"
-                    autocomplete="off"
-                >
+                <input id="listNameInput" type="text" placeholder="Example: testsharma" autocomplete="off">
                 <p class="field-help">Enter the exact name of the existing contact list in your Authkey account.</p>
 
                 <div class="mapping-header">
@@ -98,5 +93,13 @@
     <script src="../common/auth.js"></script>
     <script src="../common/api.js"></script>
     <script src="sendDataToAuthkey.js"></script>
+    <script>
+        function isZohoConnected(connection) {
+            const value = connection?.data || connection?.connection || connection || {};
+            const connectedFlag = value.connected === true || value.connected === "true";
+            const hasAuthorizedDomain = Boolean(value.apiDomain || value.api_domain);
+            return connectedFlag || (value.success !== false && hasAuthorizedDomain);
+        }
+    </script>
 </body>
 </html>
