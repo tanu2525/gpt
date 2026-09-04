@@ -5,19 +5,27 @@ const Authkey = require("../models/Authkey");
 const { encrypt } = require("../utils/crypto");
 const { validateAuthkey } = require("../Services/authkeyService");
 
+function maskAuthkey(value) {
+    if (!value) return "";
+    return "••••••••••••";
+}
+
 // Validate and save Authkey
 router.post("/save", async (req, res) => {
     try {
-        const { organizationId, authkey, fieldMappings = {} } = req.body;
+        const { organizationId, email, authkey, fieldMappings = {} } = req.body;
 
-        if (!organizationId || !authkey) {
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+        const normalizedAuthkey = String(authkey || "").trim();
+
+        if (!organizationId || !normalizedEmail || !normalizedAuthkey) {
             return res.status(400).json({
                 success: false,
-                message: "Organization ID and Authkey are required"
+                message: "Organization ID, email and Authkey are required"
             });
         }
 
-        const validation = await validateAuthkey(authkey);
+        const validation = await validateAuthkey(normalizedAuthkey);
 
         if (!validation.valid) {
             return res.status(401).json({
@@ -28,9 +36,10 @@ router.post("/save", async (req, res) => {
         }
 
         const existing = await Authkey.findOne({ organizationId });
-        const secured = encrypt(String(authkey).trim());
+        const secured = encrypt(normalizedAuthkey);
 
         if (existing) {
+            existing.email = normalizedEmail;
             existing.encryptedCredentials = secured.encrypted;
             existing.credentialIv = secured.iv;
             existing.credentialTag = secured.tag;
@@ -40,12 +49,14 @@ router.post("/save", async (req, res) => {
 
             return res.json({
                 success: true,
+                email: existing.email,
                 message: "Authkey Updated"
             });
         }
 
         await Authkey.create({
             organizationId,
+            email: normalizedEmail,
             encryptedCredentials: secured.encrypted,
             credentialIv: secured.iv,
             credentialTag: secured.tag,
@@ -55,6 +66,7 @@ router.post("/save", async (req, res) => {
 
         res.json({
             success: true,
+            email: normalizedEmail,
             message: "Authkey Saved"
         });
     } catch (err) {
@@ -82,6 +94,8 @@ router.get("/:organizationId", async (req, res) => {
 
         res.json({
             configured: true,
+            email: auth.email || "",
+            maskedAuthkey: maskAuthkey(auth.encryptedCredentials),
             fieldMappings: auth.fieldMappings,
             lastValidatedAt: auth.lastValidatedAt
         });
