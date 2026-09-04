@@ -1,22 +1,37 @@
 const messageService = require("./messageService");
 const { getBulkConcurrency } = require("../utils/requestValidation");
 
+function getRecordName(record, module) {
+    if (module === "Accounts") {
+        return record.Account_Name || record.id || "Unnamed account";
+    }
+
+    if (module === "Contacts") {
+        return record.Full_Name || record.Last_Name || record.First_Name || record.id || "Unnamed contact";
+    }
+
+    return record.Full_Name || record.Last_Name || record.First_Name || record.id || "Unnamed lead";
+}
+
 async function sendOne({
-    lead,
+    record,
     organizationId,
+    module,
     channel,
     templateId,
     templateName,
     variables
 }) {
     const recipient = String(channel).toLowerCase() === "email"
-        ? lead.Email
-        : (lead.Mobile || lead.Phone);
+        ? record.Email
+        : (record.Mobile || record.Phone);
+
+    const name = getRecordName(record, module);
 
     if (!recipient) {
         return {
-            id: lead.id,
-            name: lead.Full_Name,
+            id: record.id,
+            name,
             status: "skipped",
             error: "No compatible recipient was found."
         };
@@ -25,7 +40,7 @@ async function sendOne({
     const finalVariables = {};
     Object.keys(variables || {}).forEach(key => {
         const field = variables[key];
-        finalVariables[key] = lead[field] || "";
+        finalVariables[key] = record[field] || "";
     });
 
     try {
@@ -36,19 +51,19 @@ async function sendOne({
             templateId,
             templateName,
             variables: finalVariables,
-            recordId: lead.id,
-            module: "Leads"
+            recordId: record.id,
+            module
         });
 
         return {
-            id: lead.id,
-            name: lead.Full_Name,
+            id: record.id,
+            name,
             status: "accepted"
         };
     } catch (error) {
         return {
-            id: lead.id,
-            name: lead.Full_Name,
+            id: record.id,
+            name,
             status: "failed",
             error: error.message
         };
@@ -62,11 +77,20 @@ async function send(data) {
         templateId,
         templateName,
         variables = {},
-        leads = []
+        module = "Leads",
+        records = data.leads || []
     } = data;
 
-    if (!Array.isArray(leads)) {
-        const error = new Error("leads must be an array.");
+    const supportedModules = ["Leads", "Contacts", "Accounts"];
+
+    if (!supportedModules.includes(module)) {
+        const error = new Error("module must be Leads, Contacts, or Accounts.");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (!Array.isArray(records)) {
+        const error = new Error("records must be an array.");
         error.statusCode = 400;
         throw error;
     }
@@ -78,12 +102,13 @@ async function send(data) {
 
     const results = [];
 
-    for (let start = 0; start < leads.length; start += concurrency) {
-        const batch = leads.slice(start, start + concurrency);
+    for (let start = 0; start < records.length; start += concurrency) {
+        const batch = records.slice(start, start + concurrency);
         const batchResults = await Promise.all(
-            batch.map(lead => sendOne({
-                lead,
+            batch.map(record => sendOne({
+                record,
                 organizationId,
+                module,
                 channel,
                 templateId,
                 templateName,
@@ -100,7 +125,8 @@ async function send(data) {
 
     return {
         success: failedCount === 0,
-        total: leads.length,
+        module,
+        total: records.length,
         acceptedCount,
         failedCount,
         skippedCount,
