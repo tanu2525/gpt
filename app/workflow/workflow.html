@@ -22,8 +22,8 @@
                     <th>Workflow Name</th>
                     <th>Module</th>
                     <th>Trigger</th>
-                    <th>Channel</th>
-                    <th>Template</th>
+                    <th>Action</th>
+                    <th>Configuration</th>
                     <th>Last Updated</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -43,7 +43,7 @@
         <div>
             <button type="button" id="backToHistoryBtn" class="link-button">← Back to Workflow History</button>
             <h2 id="editorTitle">Create Workflow</h2>
-            <p id="editorDescription">Configure an Authkey message workflow. Zoho automation will be created automatically when you save.</p>
+            <p id="editorDescription">Configure an Authkey workflow. Zoho automation will be created automatically when you save.</p>
         </div>
     </div>
 
@@ -72,30 +72,54 @@
         </div>
 
         <div class="form-group">
-            <label>Channel</label>
-            <select id="channel">
-                <option value="whatsapp">WhatsApp</option>
-                <option value="sms">SMS</option>
-                <option value="email">Email</option>
-                <option value="voice">Voice</option>
-                <option value="rcs">RCS</option>
+            <label>Workflow Action</label>
+            <select id="workflowAction">
+                <option value="message">Send Message</option>
+                <option value="contact_list">Send to Contact List in Authkey</option>
             </select>
+            <small>Choose whether the selected Zoho event should send a message or add the triggered CRM record to an Authkey contact list.</small>
         </div>
 
-        <div class="form-group">
-            <label>Template</label>
-            <select id="templateSelect"></select>
+        <div id="messageConfiguration">
+            <div class="form-group">
+                <label>Channel</label>
+                <select id="channel">
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="sms">SMS</option>
+                    <option value="email">Email</option>
+                    <option value="voice">Voice</option>
+                    <option value="rcs">RCS</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Template</label>
+                <select id="templateSelect"></select>
+            </div>
+
+            <h3>Recipient Field</h3>
+            <p>Select a phone/email field. For Deals and Tasks you can select a lookup field that points to the related CRM record.</p>
+            <select id="recipientField"></select>
+
+            <hr>
+
+            <h3>Variable Mapping</h3>
+            <p>You can map direct CRM fields or supported fields from lookup records.</p>
+            <div id="variablesContainer"></div>
         </div>
 
-        <h3>Recipient Field</h3>
-        <p>Select a phone/email field. For Deals and Tasks you can select a lookup field that points to the related CRM record.</p>
-        <select id="recipientField"></select>
+        <div id="contactListConfiguration" hidden>
+            <div class="form-group">
+                <label>Authkey Contact List Name</label>
+                <input type="text" id="contactListName" placeholder="Example: New Zoho Leads">
+                <small>When this workflow event occurs, the triggered CRM record will be sent to this Authkey contact list.</small>
+            </div>
 
-        <hr>
-
-        <h3>Variable Mapping</h3>
-        <p>You can map direct CRM fields or supported fields from lookup records.</p>
-        <div id="variablesContainer"></div>
+            <h3>Contact Field Mapping</h3>
+            <p>Map the Zoho CRM fields from the triggered record to the Authkey contact payload.</p>
+            <div id="contactMappingsContainer"></div>
+            <button type="button" id="addContactMappingBtn">+ Add Field</button>
+        </div>
 
         <br>
         <button id="saveBtn">Save Workflow and Configure Zoho</button>
