@@ -35,11 +35,31 @@ router.post("/save", async (req, res) => {
             });
         }
 
+        const authkeyEmail = String(validation.email || "")
+            .trim()
+            .toLowerCase();
+
+        if (!authkeyEmail) {
+            return res.status(400).json({
+                success: false,
+                code: "EMAIL_NOT_FOUND",
+                message: "No email was found for this Authkey."
+            });
+        }
+
+        if (normalizedEmail !== authkeyEmail) {
+            return res.status(400).json({
+                success: false,
+                code: "EMAIL_AUTHKEY_MISMATCH",
+                message: "The entered email is not associated with this Authkey. Please enter the correct email."
+            });
+        }
+
         const existing = await Authkey.findOne({ organizationId });
         const secured = encrypt(normalizedAuthkey);
 
         if (existing) {
-            existing.email = normalizedEmail;
+            existing.email = authkeyEmail;
             existing.encryptedCredentials = secured.encrypted;
             existing.credentialIv = secured.iv;
             existing.credentialTag = secured.tag;
@@ -56,7 +76,7 @@ router.post("/save", async (req, res) => {
 
         await Authkey.create({
             organizationId,
-            email: normalizedEmail,
+            email: authkeyEmail,
             encryptedCredentials: secured.encrypted,
             credentialIv: secured.iv,
             credentialTag: secured.tag,
@@ -66,7 +86,7 @@ router.post("/save", async (req, res) => {
 
         res.json({
             success: true,
-            email: normalizedEmail,
+            email: authkeyEmail,
             message: "Authkey Saved"
         });
     } catch (err) {
