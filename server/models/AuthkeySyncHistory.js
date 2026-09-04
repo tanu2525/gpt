@@ -11,6 +11,10 @@ const authkeySyncHistorySchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        listName: {
+            type: String,
+            default: ""
+        },
         mappings: [
             {
                 zohoField: String,
