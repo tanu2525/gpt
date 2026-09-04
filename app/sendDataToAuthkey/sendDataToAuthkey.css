@@ -21,6 +21,26 @@ body {
     margin-bottom: 24px;
 }
 
+.connection-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    background: #fff8e8;
+    border: 1px solid #f0d79a;
+    border-radius: 8px;
+}
+
+.connection-card h3 {
+    margin-bottom: 6px;
+}
+
+.connection-card p {
+    color: #667085;
+}
+
 h2 { margin: 0 0 8px; }
 h3 { margin: 0; }
 p { margin: 0; }
@@ -156,7 +176,8 @@ th { background: #f9fafb; font-size: 13px; }
 
 @media (max-width: 700px) {
     .page { padding: 16px; }
-    .page-header { flex-direction: column; }
+    .page-header,
+    .connection-card { flex-direction: column; align-items: flex-start; }
     .mapping-row { grid-template-columns: 1fr; }
     .remove-btn { justify-self: start; }
 }
