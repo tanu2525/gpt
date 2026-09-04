@@ -11,6 +11,8 @@ router.get("/zoho/connection", workflowController.getZohoConnectionStatus);
 router.get("/zoho/modules", workflowController.getZohoModules);
 router.get("/zoho/fields", workflowController.getZohoFields);
 
+// Workflow history and configuration
+router.get("/history", workflowController.getWorkflowHistory);
 router.post("/save", workflowController.saveWorkflow);
 
 // Authentication is workflow-specific and is verified inside triggerWorkflow.
