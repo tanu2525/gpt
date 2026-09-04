@@ -1,4 +1,5 @@
 const ALLOWED_MODULES = new Set(["Leads", "Contacts", "Accounts", "Deals", "Tasks"]);
+const CONTACT_LIST_MODULES = new Set(["Leads", "Contacts", "Accounts"]);
 const ALLOWED_TRIGGERS = new Set(["create", "edit"]);
 const ALLOWED_CHANNELS = new Set(["whatsapp", "sms", "email", "voice", "rcs"]);
 const ALLOWED_WORKFLOW_ACTIONS = new Set(["message", "contact_list"]);
@@ -75,6 +76,12 @@ function validateWorkflowInput(body = {}) {
     };
 
     if (actionType === "contact_list") {
+        if (!CONTACT_LIST_MODULES.has(module)) {
+            const error = new Error("Send to Contact List currently supports Leads, Contacts and Accounts only.");
+            error.statusCode = 400;
+            throw error;
+        }
+
         const contactListName = requiredString(body.contactListName, "contactListName", { maxLength: 200 });
         const contactMappings = normalizeContactMappings(body.contactMappings);
 
@@ -137,6 +144,7 @@ function getBulkConcurrency(value, fallback = 5) {
 
 module.exports = {
     ALLOWED_MODULES,
+    CONTACT_LIST_MODULES,
     ALLOWED_TRIGGERS,
     ALLOWED_CHANNELS,
     ALLOWED_WORKFLOW_ACTIONS,
