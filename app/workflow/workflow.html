@@ -1,66 +1,108 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Workflow Configuration</title>
+    <title>Authkey Workflow</title>
     <link rel="stylesheet" href="workflow.css">
 </head>
 <body>
 
-<h2>Workflow Configuration</h2>
-<p>Configure an Authkey message workflow. Zoho automation will be created or updated automatically when you save.</p>
+<div id="historyView">
+    <div class="page-header">
+        <div>
+            <h2>Authkey Workflow</h2>
+            <p>View and manage all Authkey webhook workflow rules created for this Zoho CRM organization.</p>
+        </div>
+        <button type="button" id="createWorkflowBtn">+ Create New Workflow</button>
+    </div>
 
-<div class="form-group">
-    <button type="button" id="connectZohoBtn">Connect Zoho CRM</button>
-    <small id="zohoConnectionStatus">Checking Zoho connection...</small>
+    <div class="table-wrap">
+        <table id="workflowHistoryTable">
+            <thead>
+                <tr>
+                    <th>Workflow Name</th>
+                    <th>Module</th>
+                    <th>Trigger</th>
+                    <th>Channel</th>
+                    <th>Template</th>
+                    <th>Last Updated</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="workflowHistoryBody">
+                <tr>
+                    <td colspan="8" class="empty-state">Loading workflow history...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<div class="form-group">
-    <label>Workflow Name</label>
-    <input type="text" id="workflowName" placeholder="Example: Lead Created">
+<div id="editorView" hidden>
+    <div class="page-header">
+        <div>
+            <button type="button" id="backToHistoryBtn" class="link-button">← Back to Workflow History</button>
+            <h2 id="editorTitle">Create Workflow</h2>
+            <p id="editorDescription">Configure an Authkey message workflow. Zoho automation will be created automatically when you save.</p>
+        </div>
+    </div>
+
+    <div class="form-group" id="zohoConnectionCard">
+        <button type="button" id="connectZohoBtn">Connect Zoho CRM</button>
+        <small id="zohoConnectionStatus">Checking Zoho connection...</small>
+    </div>
+
+    <div id="workflowForm" hidden>
+        <div class="form-group">
+            <label>Workflow Name</label>
+            <input type="text" id="workflowName" placeholder="Example: Lead Created">
+        </div>
+
+        <div class="form-group">
+            <label>Module</label>
+            <select id="module"></select>
+        </div>
+
+        <div class="form-group">
+            <label>Trigger</label>
+            <select id="trigger">
+                <option value="create">Create</option>
+                <option value="edit">Update</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Channel</label>
+            <select id="channel">
+                <option value="whatsapp">WhatsApp</option>
+                <option value="sms">SMS</option>
+                <option value="email">Email</option>
+                <option value="voice">Voice</option>
+                <option value="rcs">RCS</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Template</label>
+            <select id="templateSelect"></select>
+        </div>
+
+        <h3>Recipient Field</h3>
+        <p>Select a phone/email field. For Deals and Tasks you can select a lookup field that points to the related CRM record.</p>
+        <select id="recipientField"></select>
+
+        <hr>
+
+        <h3>Variable Mapping</h3>
+        <p>You can map direct CRM fields or supported fields from lookup records.</p>
+        <div id="variablesContainer"></div>
+
+        <br>
+        <button id="saveBtn">Save Workflow and Configure Zoho</button>
+    </div>
+
+    <div id="status"></div>
 </div>
-
-<div class="form-group">
-    <label>Module</label>
-    <select id="module"></select>
-</div>
-
-<div class="form-group">
-    <label>Trigger</label>
-    <select id="trigger">
-        <option value="create">Create</option>
-        <option value="edit">Update</option>
-    </select>
-</div>
-
-<div class="form-group">
-    <label>Channel</label>
-    <select id="channel">
-        <option value="whatsapp">WhatsApp</option>
-        <option value="sms">SMS</option>
-        <option value="email">Email</option>
-        <option value="voice">Voice</option>
-        <option value="rcs">RCS</option>
-    </select>
-</div>
-
-<div class="form-group">
-    <label>Template</label>
-    <select id="templateSelect"></select>
-</div>
-
-<h3>Recipient Field</h3>
-<p>Select a phone/email field. For Deals and Tasks you can select a lookup field that points to the related CRM record.</p>
-<select id="recipientField"></select>
-
-<hr>
-
-<h3>Variable Mapping</h3>
-<p>You can map direct CRM fields or supported fields from lookup records.</p>
-<div id="variablesContainer"></div>
-
-<br>
-<button id="saveBtn">Save Workflow and Configure Zoho</button>
-<div id="status"></div>
 
 <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
 <script src="../common/auth.js"></script>
