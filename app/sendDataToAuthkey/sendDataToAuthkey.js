@@ -2,9 +2,16 @@ let moduleFields = [];
 let zohoConnection = null;
 const SUPPORTED_MODULES = ["Leads", "Contacts", "Accounts"];
 
+function getConnectionData(connection) {
+    if (!connection || typeof connection !== "object") return {};
+    return connection.connection || connection.data?.connection || connection.data || connection;
+}
+
 function isZohoConnected(connection) {
-    return connection?.connected === true ||
-        (connection?.success === true && Boolean(connection?.apiDomain));
+    const value = getConnectionData(connection);
+    return value.connected === true ||
+        value.connected === "true" ||
+        (connection?.success !== false && Boolean(value.apiDomain || value.api_domain));
 }
 
 function setStatus(elementId, message = "", type = "") {
@@ -26,20 +33,13 @@ function setZohoConnectionUi(connection) {
     const connected = isZohoConnected(connection);
 
     zohoConnection = connection;
+    card.hidden = connected;
+    button.hidden = connected;
 
-    // A connected organization does not need the connection prompt.
-    // Hide both the card and the button so the user only sees it when action is required.
-    if (connected) {
-        card.hidden = true;
-        button.hidden = true;
-        return;
+    if (!connected) {
+        button.textContent = "Connect Zoho CRM";
+        details.textContent = "Connect this Zoho CRM organization before selecting CRM fields or sending module records to Authkey.";
     }
-
-    card.hidden = false;
-    button.hidden = false;
-    button.textContent = "Connect Zoho CRM";
-    details.textContent =
-        "Connect this Zoho CRM organization before selecting CRM fields or sending module records to Authkey.";
 }
 
 async function checkZohoConnection() {
@@ -55,28 +55,22 @@ async function checkZohoConnection() {
 async function connectZoho() {
     try {
         const context = await getOrganizationContext();
-        const params = new URLSearchParams({
-            organizationId: context.organizationId
-        });
+        const params = new URLSearchParams({ organizationId: context.organizationId });
 
         if (context.apiDomain) params.set("apiDomain", context.apiDomain);
         if (context.countryCode) params.set("countryCode", context.countryCode);
 
-        const result = await requestJson(
-            `/api/workflow/zoho/oauth?${params.toString()}`
-        );
+        const result = await requestJson(`/api/workflow/zoho/oauth?${params.toString()}`);
 
         if (!result.authorizationUrl) {
             throw new Error("Zoho authorization URL was not generated.");
         }
 
         window.open(result.authorizationUrl, "_blank");
-
         document.getElementById("zohoConnectionStatus").textContent =
             "Complete Zoho authorization in the opened window, then return here and reload the page.";
     } catch (error) {
-        document.getElementById("zohoConnectionStatus").textContent =
-            error.message;
+        document.getElementById("zohoConnectionStatus").textContent = error.message;
     }
 }
 
@@ -92,9 +86,7 @@ async function requireZohoConnection() {
 
 function showHistory() {
     showOnly("historyView");
-    loadHistory().catch(error =>
-        setStatus("historyStatus", error.message, "error")
-    );
+    loadHistory().catch(error => setStatus("historyStatus", error.message, "error"));
 }
 
 async function showConfiguration() {
@@ -120,13 +112,11 @@ function createOption(value, label, selectedValue = "") {
 
 function getSuggestedPayloadPath(field) {
     const name = String(field.api_name || "").toLowerCase();
-
     if (["mobile", "phone"].includes(name)) return "mobile";
     if (name === "email") return "email";
     if (name === "first_name") return "first_name";
     if (name === "last_name") return "last_name";
-
-    return String(field.api_name || "").toLowerCase();
+    return name;
 }
 
 function addMappingRow(mapping = {}) {
@@ -146,9 +136,7 @@ function addMappingRow(mapping = {}) {
 
     moduleFields.forEach(field => {
         const label = `${field.field_label || field.api_name} (${field.api_name})`;
-        zohoSelect.appendChild(
-            createOption(field.api_name, label, mapping.zohoField || "")
-        );
+        zohoSelect.appendChild(createOption(field.api_name, label, mapping.zohoField || ""));
     });
 
     zohoGroup.append(zohoLabel, zohoSelect);
@@ -161,34 +149,27 @@ function addMappingRow(mapping = {}) {
 
     const payloadInput = document.createElement("input");
     payloadInput.className = "payload-path";
-    payloadInput.placeholder = "Example: email, mobile or billing";
+    payloadInput.placeholder = "Example: email, mobile or first_name";
     payloadInput.value = mapping.payloadPath || "";
 
     payloadGroup.append(payloadLabel, payloadInput);
 
     zohoSelect.addEventListener("change", () => {
         if (payloadInput.value) return;
-
-        const field = moduleFields.find(
-            item => item.api_name === zohoSelect.value
-        );
-
-        if (field) {
-            payloadInput.value = getSuggestedPayloadPath(field);
-        }
+        const field = moduleFields.find(item => item.api_name === zohoSelect.value);
+        if (field) payloadInput.value = getSuggestedPayloadPath(field);
     });
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "remove-btn";
-    removeButton.textContent = "Remove";
+    removeButton.setAttribute("aria-label", "Remove field mapping");
+    removeButton.title = "Remove field mapping";
+    removeButton.innerHTML = "&times;";
 
     removeButton.addEventListener("click", () => {
         row.remove();
-
-        if (!container.children.length) {
-            addMappingRow();
-        }
+        if (!container.children.length) addMappingRow();
     });
 
     row.append(zohoGroup, payloadGroup, removeButton);
@@ -210,29 +191,20 @@ async function loadModuleFields() {
     moduleFields = (result.fields || [])
         .filter(field => field.api_name)
         .filter(field => !field.private && !field.system_mandatory)
-        .sort((a, b) =>
-            String(a.field_label || a.api_name).localeCompare(
-                String(b.field_label || b.api_name)
-            )
-        );
+        .sort((a, b) => String(a.field_label || a.api_name).localeCompare(String(b.field_label || b.api_name)));
 
     const container = document.getElementById("mappingRows");
     container.innerHTML = "";
 
     const defaults = moduleFields
-        .filter(field =>
-            ["Mobile", "Phone", "Email", "First_Name", "Last_Name"]
-                .includes(field.api_name)
-        )
+        .filter(field => ["Mobile", "Phone", "Email", "First_Name", "Last_Name"].includes(field.api_name))
         .slice(0, 5);
 
     if (defaults.length) {
-        defaults.forEach(field =>
-            addMappingRow({
-                zohoField: field.api_name,
-                payloadPath: getSuggestedPayloadPath(field)
-            })
-        );
+        defaults.forEach(field => addMappingRow({
+            zohoField: field.api_name,
+            payloadPath: getSuggestedPayloadPath(field)
+        }));
     } else {
         addMappingRow();
     }
@@ -243,15 +215,8 @@ function getMappings() {
         .map(row => {
             const zohoField = row.querySelector(".zoho-field")?.value?.trim();
             const payloadPath = row.querySelector(".payload-path")?.value?.trim();
-            const field = moduleFields.find(
-                item => item.api_name === zohoField
-            );
-
-            return {
-                zohoField,
-                payloadPath,
-                label: field?.field_label || zohoField
-            };
+            const field = moduleFields.find(item => item.api_name === zohoField);
+            return { zohoField, payloadPath, label: field?.field_label || zohoField };
         })
         .filter(mapping => mapping.zohoField && mapping.payloadPath);
 }
@@ -262,45 +227,25 @@ async function sendData() {
     const listName = document.getElementById("listNameInput").value.trim();
     const mappings = getMappings();
 
-    if (!listName) {
-        throw new Error("Enter the Authkey contact list name.");
-    }
-
-    if (!mappings.length) {
-        throw new Error("Add at least one complete field mapping.");
-    }
+    if (!listName) throw new Error("Enter the Authkey contact list name.");
+    if (!mappings.length) throw new Error("Add at least one complete field mapping.");
 
     button.disabled = true;
     button.textContent = "Sending...";
-
-    setStatus(
-        "configStatus",
-        "Fetching Zoho records and sending them directly to the selected Authkey contact list..."
-    );
+    setStatus("configStatus", "Fetching CRM records. Each record will be sent individually to the selected Authkey contact list.");
 
     try {
         await requireZohoConnection();
-
         const organizationId = await getOrganizationId();
-        const result = await requestJson(
-            "/api/zoho/authkey/sync-module",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    organizationId,
-                    module,
-                    listName,
-                    mappings
-                })
-            }
-        );
+        const result = await requestJson("/api/zoho/authkey/sync-module", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ organizationId, module, listName, mappings })
+        });
 
         setStatus(
             "configStatus",
-            `Completed. Total: ${result.total}, Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}. CRM record data was sent directly to Authkey and was not stored in this extension database.`,
+            `Completed. Total: ${result.total}, Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}.`,
             result.failed ? "error" : "success"
         );
     } finally {
@@ -318,30 +263,19 @@ function createCell(row, value) {
 
 async function loadHistory() {
     const organizationId = await getOrganizationId();
-
-    const result = await requestJson(
-        `/api/zoho/authkey/history/${encodeURIComponent(organizationId)}`
-    );
-
+    const result = await requestJson(`/api/zoho/authkey/history/${encodeURIComponent(organizationId)}`);
     const body = document.getElementById("historyBody");
     const items = result.data || [];
     body.innerHTML = "";
 
     if (!items.length) {
-        body.innerHTML =
-            '<tr><td colspan="8">No data transfer history yet.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8">No data transfer history yet.</td></tr>';
         return;
     }
 
     items.forEach(item => {
         const row = document.createElement("tr");
-
-        createCell(
-            row,
-            item.createdAt
-                ? new Date(item.createdAt).toLocaleString()
-                : "-"
-        );
+        createCell(row, item.createdAt ? new Date(item.createdAt).toLocaleString() : "-");
         createCell(row, item.module || "-");
         createCell(row, item.listName || "-");
         createCell(row, item.total ?? 0);
@@ -354,7 +288,6 @@ async function loadHistory() {
         const badge = document.createElement("span");
         badge.className = `badge ${status}`;
         badge.textContent = status;
-
         statusCell.appendChild(badge);
         row.appendChild(statusCell);
         body.appendChild(row);
@@ -362,46 +295,26 @@ async function loadHistory() {
 }
 
 async function initialize() {
+    document.getElementById("zohoConnectionCard").hidden = true;
+
     try {
         if (!(await ensureAuthkeyConfigured())) return;
-
-        await Promise.all([
-            checkZohoConnection(),
-            loadHistory()
-        ]);
+        await Promise.all([checkZohoConnection(), loadHistory()]);
     } catch (error) {
-        console.error(
-            "Send Data to Authkey initialization error:",
-            error
-        );
-
         setStatus("historyStatus", error.message, "error");
         setStatus("configStatus", error.message, "error");
     }
 }
 
-document.getElementById("openSyncBtn").addEventListener("click", () => {
-    showConfiguration();
-});
-
+document.getElementById("openSyncBtn").addEventListener("click", showConfiguration);
 document.getElementById("backBtn").addEventListener("click", showHistory);
-
 document.getElementById("moduleSelect").addEventListener("change", () => {
-    loadModuleFields().catch(error =>
-        setStatus("configStatus", error.message, "error")
-    );
+    loadModuleFields().catch(error => setStatus("configStatus", error.message, "error"));
 });
-
-document.getElementById("addFieldBtn").addEventListener("click", () => {
-    addMappingRow();
-});
-
+document.getElementById("addFieldBtn").addEventListener("click", () => addMappingRow());
 document.getElementById("sendBtn").addEventListener("click", () => {
-    sendData().catch(error =>
-        setStatus("configStatus", error.message, "error")
-    );
+    sendData().catch(error => setStatus("configStatus", error.message, "error"));
 });
-
 document.getElementById("connectZohoBtn").addEventListener("click", connectZoho);
 
 ZOHO.embeddedApp.on("PageLoad", initialize);
