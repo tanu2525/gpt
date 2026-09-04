@@ -77,20 +77,33 @@ function showEditorView() {
     document.getElementById("editorView").hidden = false;
 }
 
+function getWorkflowAction() {
+    return document.getElementById("workflowAction").value;
+}
+
+function updateActionUi() {
+    const isContactList = getWorkflowAction() === "contact_list";
+    document.getElementById("messageConfiguration").hidden = isContactList;
+    document.getElementById("contactListConfiguration").hidden = !isContactList;
+}
+
 function resetEditor() {
     currentWorkflowId = null;
     pendingEditWorkflow = null;
     moduleFields = [];
     lookupFieldCache.clear();
     document.getElementById("editorTitle").textContent = "Create Workflow";
-    document.getElementById("editorDescription").textContent = "Configure an Authkey message workflow. Zoho automation will be created automatically when you save.";
+    document.getElementById("editorDescription").textContent = "Configure an Authkey workflow. Zoho automation will be created automatically when you save.";
     document.getElementById("workflowName").value = "";
     document.getElementById("trigger").value = "create";
+    document.getElementById("workflowAction").value = "message";
     document.getElementById("channel").value = "whatsapp";
+    document.getElementById("contactListName").value = "";
     document.getElementById("variablesContainer").innerHTML = "";
+    document.getElementById("contactMappingsContainer").innerHTML = "";
     document.getElementById("workflowForm").hidden = true;
-    document.getElementById("zohoConnectionCard").hidden = false;
     setStatus("");
+    updateActionUi();
 }
 
 async function loadWorkflowHistory() {
@@ -119,16 +132,20 @@ function renderWorkflowHistory(workflows) {
 
     workflows.forEach(workflow => {
         const row = document.createElement("tr");
-
+        const isContactList = workflow.actionType === "contact_list";
         const statusClass = workflow.enabled ? "status-active" : "status-inactive";
         const statusText = workflow.enabled ? "Active" : "Inactive";
+        const actionLabel = isContactList ? "Send to Contact List" : "Send Message";
+        const configuration = isContactList
+            ? (workflow.contactListName || "-")
+            : (workflow.templateName || workflow.templateId || "-");
 
         row.innerHTML = `
             <td>${escapeHtml(workflow.workflowName || "-")}</td>
             <td>${escapeHtml(workflow.module || "-")}</td>
             <td>${escapeHtml(workflow.trigger === "edit" ? "Update" : "Create")}</td>
-            <td>${escapeHtml(String(workflow.channel || "-").toUpperCase())}</td>
-            <td>${escapeHtml(workflow.templateName || workflow.templateId || "-")}</td>
+            <td>${escapeHtml(actionLabel)}</td>
+            <td>${escapeHtml(configuration)}</td>
             <td>${escapeHtml(formatWorkflowDate(workflow.updatedAt))}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td><button type="button" class="edit-workflow-btn">Edit</button></td>
@@ -175,6 +192,7 @@ async function openEditorForCreate() {
     await loadModuleFields();
     await loadTemplates();
     await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
+    addContactMapping();
     await previewWorkflow();
 }
 
@@ -186,7 +204,10 @@ async function openEditorForEdit(workflow) {
     document.getElementById("editorDescription").textContent = "Update the workflow configuration. Saving will update the Authkey workflow and recreate the linked Zoho automation.";
     document.getElementById("workflowName").value = workflow.workflowName || "";
     document.getElementById("trigger").value = workflow.trigger || "create";
-    document.getElementById("channel").value = workflow.channel || "whatsapp";
+    document.getElementById("workflowAction").value = workflow.actionType || "message";
+    document.getElementById("channel").value = workflow.channel && workflow.channel !== "contact_list" ? workflow.channel : "whatsapp";
+    document.getElementById("contactListName").value = workflow.contactListName || "";
+    updateActionUi();
     showEditorView();
 
     if (!(await prepareEditor())) return;
@@ -194,6 +215,17 @@ async function openEditorForEdit(workflow) {
     await loadModules();
     document.getElementById("module").value = workflow.module || document.getElementById("module").value;
     await loadModuleFields();
+
+    if (workflow.actionType === "contact_list") {
+        const mappings = Array.isArray(workflow.contactMappings) ? workflow.contactMappings : [];
+        if (mappings.length) {
+            mappings.forEach(mapping => addContactMapping(mapping));
+        } else {
+            addContactMapping();
+        }
+        return;
+    }
+
     await loadTemplates({ channel: workflow.channel || "whatsapp" });
 
     const templateSelect = document.getElementById("templateSelect");
@@ -249,6 +281,7 @@ async function loadModuleFields() {
     moduleFields = result.fields || [];
     lookupFieldCache.clear();
     populateRecipientFields();
+    refreshContactMappingFields();
     await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
 }
 
@@ -276,6 +309,59 @@ function populateRecipientFields() {
         option.textContent = "No compatible recipient field found";
         select.appendChild(option);
     }
+}
+
+function createContactFieldOptions(select, selectedValue = "") {
+    select.innerHTML = '<option value="">Select Zoho field</option>';
+    moduleFields.forEach(field => {
+        const option = document.createElement("option");
+        option.value = field.api_name;
+        option.textContent = `${field.field_label || field.field_name || field.api_name} (${field.api_name})`;
+        select.appendChild(option);
+    });
+    if (selectedValue) select.value = selectedValue;
+}
+
+function addContactMapping(mapping = {}) {
+    const container = document.getElementById("contactMappingsContainer");
+    const row = document.createElement("div");
+    row.className = "contact-mapping-row";
+
+    const zohoSelect = document.createElement("select");
+    zohoSelect.className = "contact-zoho-field";
+    createContactFieldOptions(zohoSelect, mapping.zohoField || "");
+
+    const payloadInput = document.createElement("input");
+    payloadInput.type = "text";
+    payloadInput.className = "contact-payload-path";
+    payloadInput.placeholder = "Authkey payload field, e.g. mobile";
+    payloadInput.value = mapping.payloadPath || "";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "contact-mapping-remove";
+    removeButton.textContent = "×";
+    removeButton.setAttribute("aria-label", "Remove field mapping");
+    removeButton.addEventListener("click", () => row.remove());
+
+    row.append(zohoSelect, payloadInput, removeButton);
+    container.appendChild(row);
+}
+
+function refreshContactMappingFields() {
+    document.querySelectorAll(".contact-zoho-field").forEach(select => {
+        const currentValue = select.value;
+        createContactFieldOptions(select, currentValue);
+    });
+}
+
+function getContactMappings() {
+    return [...document.querySelectorAll("#contactMappingsContainer .contact-mapping-row")]
+        .map(row => ({
+            zohoField: row.querySelector(".contact-zoho-field")?.value || "",
+            payloadPath: row.querySelector(".contact-payload-path")?.value.trim() || ""
+        }))
+        .filter(mapping => mapping.zohoField && mapping.payloadPath);
 }
 
 function getLookupModule(field) {
@@ -349,6 +435,7 @@ async function renderMappings(body = "") {
 }
 
 async function saveWorkflow() {
+    const actionType = getWorkflowAction();
     const variables = {};
     document.querySelectorAll("#variablesContainer select").forEach(select => {
         if (select.value) {
@@ -356,20 +443,37 @@ async function saveWorkflow() {
         }
     });
 
-    const template = document.getElementById("templateSelect").selectedOptions[0];
     const body = {
         organizationId: await getOrganizationId(),
         workflowId: currentWorkflowId || undefined,
         workflowName: document.getElementById("workflowName").value.trim(),
         module: document.getElementById("module").value,
         trigger: document.getElementById("trigger").value,
-        channel: document.getElementById("channel").value,
-        templateId: document.getElementById("templateSelect").value,
-        templateName: template ? template.textContent : "",
-        recipientField: document.getElementById("recipientField").value,
-        variables,
+        actionType,
         autoConfigureZoho: true
     };
+
+    if (actionType === "contact_list") {
+        body.contactListName = document.getElementById("contactListName").value.trim();
+        body.contactMappings = getContactMappings();
+
+        if (!body.contactListName) {
+            setStatus("Enter the Authkey contact list name.");
+            return;
+        }
+
+        if (!body.contactMappings.length) {
+            setStatus("Add at least one Zoho field mapping for the Authkey contact list.");
+            return;
+        }
+    } else {
+        const template = document.getElementById("templateSelect").selectedOptions[0];
+        body.channel = document.getElementById("channel").value;
+        body.templateId = document.getElementById("templateSelect").value;
+        body.templateName = template ? template.textContent : "";
+        body.recipientField = document.getElementById("recipientField").value;
+        body.variables = variables;
+    }
 
     try {
         setStatus(currentWorkflowId ? "Updating workflow and configuring Zoho automation..." : "Saving workflow and configuring Zoho automation...");
@@ -407,9 +511,12 @@ document.getElementById("createWorkflowBtn").addEventListener("click", () => {
 });
 
 document.getElementById("backToHistoryBtn").addEventListener("click", showHistoryView);
-
+document.getElementById("workflowAction").addEventListener("change", updateActionUi);
+document.getElementById("addContactMappingBtn").addEventListener("click", () => addContactMapping());
 document.getElementById("module").addEventListener("change", () => {
-    loadModuleFields().then(previewWorkflow).catch(error => setStatus(error.message));
+    loadModuleFields().then(() => {
+        if (getWorkflowAction() === "message") return previewWorkflow();
+    }).catch(error => setStatus(error.message));
 });
 
 document.getElementById("channel").addEventListener("change", () => {
