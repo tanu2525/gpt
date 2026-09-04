@@ -117,14 +117,39 @@ async function fetchRecordsPage(accessToken, apiDomain, moduleName, params) {
     return response.data;
 }
 
-async function fetchAllRecords(organizationId, moduleName) {
+function getRequestedZohoFields(moduleName, mappings = []) {
+    const selectedFields = normalizeMappings(mappings)
+        .map(mapping => mapping.zohoField)
+        .filter(Boolean);
+
+    // Zoho CRM v8 requires the fields parameter when listing module records.
+    // Keep the module's phone fields available internally for the existing
+    // Authkey mobile fallback without exposing extra fields in the UI mapping.
+    const fallbackFields = MODULE_CONFIG[moduleName]?.mobileFields || [];
+
+    return [...new Set([...selectedFields, ...fallbackFields])];
+}
+
+async function fetchAllRecords(organizationId, moduleName, mappings = []) {
     const { accessToken, apiDomain } = await zohoOAuthService.getAccessToken(organizationId);
+    const fields = getRequestedZohoFields(moduleName, mappings);
+
+    if (!fields.length) {
+        throw Object.assign(
+            new Error("Select at least one Zoho CRM field before fetching records."),
+            { statusCode: 400 }
+        );
+    }
+
     const records = [];
     let page = 1;
     let pageToken = null;
 
     while (true) {
-        const params = pageToken ? { page_token: pageToken } : { per_page: 200, page };
+        const params = pageToken
+            ? { page_token: pageToken, fields: fields.join(",") }
+            : { per_page: 200, page, fields: fields.join(",") };
+
         const response = await fetchRecordsPage(accessToken, apiDomain, moduleName, params);
         if (Array.isArray(response.data)) records.push(...response.data);
 
@@ -167,7 +192,7 @@ async function syncModule({ organizationId, module, mappings = [] }) {
     }
 
     const authkey = await getAuthkey(organizationId);
-    const records = await fetchAllRecords(organizationId, module);
+    const records = await fetchAllRecords(organizationId, module, normalizedMappings);
     const summary = {
         success: true,
         module,
@@ -231,5 +256,6 @@ module.exports = {
     syncModule,
     fetchAllRecords,
     mapRecordToAuthkey,
-    normalizeMappings
+    normalizeMappings,
+    getRequestedZohoFields
 };
