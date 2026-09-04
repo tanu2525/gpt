@@ -12,7 +12,6 @@ function showConfigurationForm() {
 
 function showConfiguredView(configuration) {
     currentConfiguration = configuration;
-
     document.getElementById("configurationForm").classList.add("hidden");
     document.getElementById("configuredView").classList.remove("hidden");
     document.getElementById("configuredEmail").textContent = configuration.email || "-";
@@ -25,8 +24,6 @@ async function loadSettings() {
     try {
         const response = await requestJson(`/api/authkey/${encodeURIComponent(id)}`);
 
-        // Existing installations saved before the email field was introduced
-        // must provide their Authkey account email once before showing the summary.
         if (response.configured && response.email) {
             showConfiguredView(response);
             setStatus("", "status");
@@ -45,7 +42,6 @@ async function loadSettings() {
 async function saveAuthkey() {
     const emailInput = document.getElementById("email");
     const authkeyInput = document.getElementById("authkey");
-
     const email = emailInput.value.trim();
     const authkey = authkeyInput.value.trim();
 
