@@ -2,6 +2,11 @@ let moduleFields = [];
 let zohoConnection = null;
 const lookupFieldCache = new Map();
 
+function isZohoConnected(connection) {
+    return connection?.connected === true ||
+        (connection?.success === true && Boolean(connection?.apiDomain));
+}
+
 function setStatus(message) {
     document.getElementById("status").textContent = message || "";
 }
@@ -12,10 +17,15 @@ function setConnectionUi(connection) {
 
     if (!button || !details) return;
 
-    if (connection?.connected) {
-        button.textContent = "Reconnect Zoho CRM";
+    const connected = isZohoConnected(connection);
+
+    if (connected) {
+        // The user is already connected, so there is no reason to show a
+        // Connect/Reconnect button on the workflow page.
+        button.hidden = true;
         details.textContent = `Connected to ${connection.environment || "Zoho"} environment${connection.apiDomain ? ` (${connection.apiDomain})` : ""}.`;
     } else {
+        button.hidden = false;
         button.textContent = "Connect Zoho CRM";
         details.textContent = "Zoho CRM must be connected once before automatic workflow creation can use the Zoho API.";
     }
@@ -149,7 +159,7 @@ async function initializeWorkflow() {
         if (!(await ensureAuthkeyConfigured())) return;
 
         const connection = await checkZohoConnection();
-        if (!connection.connected) {
+        if (!isZohoConnected(connection)) {
             setStatus("Connect this Zoho organization once to create workflows automatically.");
             return;
         }
