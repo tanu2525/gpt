@@ -46,7 +46,6 @@ function getZohoApiDomainFromPageContext() {
         const origins = window.location?.ancestorOrigins;
         if (origins) candidates.push(...Array.from(origins));
     } catch (_) {
-        // ancestorOrigins is not available in every browser.
     }
 
     for (const candidate of candidates) {
@@ -101,7 +100,6 @@ async function getOrganizationContext() {
     }
 
     const apiDomain = resolveZohoApiDomain(organization);
-
     const environment =
         organization?.type ||
         organization?.environment ||
@@ -131,30 +129,8 @@ function showAuthkeyRequiredMessage() {
     if (document.getElementById("authkeyRequiredScreen")) return;
 
     document.body.innerHTML = `
-        <div id="authkeyRequiredScreen"
-            style="
-                min-height:100vh;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                padding:24px;
-                box-sizing:border-box;
-                font-family:Arial,sans-serif;
-                background:#f6f8fb;
-            "
-        >
-            <div
-                style="
-                    max-width:520px;
-                    width:100%;
-                    background:#fff;
-                    border:1px solid #e2e8f0;
-                    border-radius:12px;
-                    padding:32px;
-                    text-align:center;
-                    box-shadow:0 8px 24px rgba(15,23,42,.08);
-                "
-            >
+        <div id="authkeyRequiredScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:Arial,sans-serif;background:#f6f8fb;">
+            <div style="max-width:520px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:32px;text-align:center;box-shadow:0 8px 24px rgba(15,23,42,.08);">
                 <div style="font-size:40px;margin-bottom:12px;">🔐</div>
                 <h2 style="margin:0 0 12px;color:#1f2937;">Authkey Required</h2>
                 <p style="margin:0;color:#4b5563;line-height:1.7;">
