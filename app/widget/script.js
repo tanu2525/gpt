@@ -29,11 +29,13 @@ ZOHO.embeddedApp.on("PageLoad", async data => {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
 
-        recordId = Array.isArray(data.EntityId) ? data.EntityId[0] : (data.EntityId || data.RecordID || data.RecordId || data.recordId);
+        recordId = Array.isArray(data.EntityId)
+            ? data.EntityId[0]
+            : (data.EntityId || data.RecordID || data.RecordId || data.recordId);
         moduleName = resolveModuleName(data);
 
         if (!recordId) {
-            showError("Unable to determine Record ID.");
+            showError("Unable to determine the CRM record.");
             return;
         }
 
@@ -42,32 +44,27 @@ ZOHO.embeddedApp.on("PageLoad", async data => {
         updateRecipientLabel();
         await refreshTemplates();
     } catch (error) {
-        console.error(error);
-        showError(error.message);
+        showError(error.message || "Unable to load the message form.");
     }
 });
 
 function showError(message) {
-    setStatus(message);
-    const configureLink = document.getElementById("configureAuthkey");
-    if (configureLink) {
-        configureLink.hidden = !/credentials have not been configured|authkey not found|not configured/i.test(message);
-    }
+    setStatus(message || "Something went wrong. Please try again.");
 }
 
 function updateRecipientLabel() {
     const channel = document.getElementById("channel").value;
     const isEmail = channel === "email";
     const recordName = getModuleSingularName();
-
     const strongElement = document.querySelector("#leadInfo strong");
+
     if (strongElement) {
         strongElement.textContent = isEmail ? `${recordName} Email:` : `${recordName} Phone:`;
     }
 
     const recipientElement = document.getElementById("leadPhoneLabel");
     if (recipientElement) {
-        recipientElement.textContent = getRecipientForChannel(record, channel) || (isEmail ? "No Email" : "No Phone");
+        recipientElement.textContent = getRecipientForChannel(record, channel) || (isEmail ? "No email available" : "No phone available");
     }
 }
 
