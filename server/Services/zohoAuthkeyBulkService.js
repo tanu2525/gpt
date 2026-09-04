@@ -196,6 +196,26 @@ async function fetchAllRecords(organizationId, moduleName, mappings = []) {
     return records;
 }
 
+function isProviderSuccess(data) {
+    if (data === true) return true;
+    if (!data || typeof data !== "object") return false;
+
+    if (data.success === true) return true;
+    if (String(data.status || "").trim().toLowerCase() === "success") return true;
+    if (String(data.result || "").trim().toLowerCase() === "success") return true;
+
+    return false;
+}
+
+function getProviderError(data, status) {
+    if (data && typeof data === "object") {
+        const message = data.message || data.error || data.error_message || data.reason;
+        if (message) return String(message);
+    }
+
+    return `Authkey did not confirm that the contact was added${status ? ` (HTTP ${status})` : ""}.`;
+}
+
 async function sendToAuthkey(payload) {
     const response = await axios.post(AUTHKEY_ADD_LIST_URL, payload, {
         headers: { "Content-Type": "application/json" },
@@ -204,13 +224,15 @@ async function sendToAuthkey(payload) {
     });
 
     if (response.status < 200 || response.status >= 300) {
-        const error = new Error(
-            response.data?.message ||
-            response.data?.error ||
-            `Authkey returned HTTP ${response.status}.`
-        );
-
+        const error = new Error(getProviderError(response.data, response.status));
         error.statusCode = response.status;
+        error.providerResponse = response.data;
+        throw error;
+    }
+
+    if (!isProviderSuccess(response.data)) {
+        const error = new Error(getProviderError(response.data, response.status));
+        error.statusCode = 502;
         error.providerResponse = response.data;
         throw error;
     }
@@ -309,20 +331,18 @@ async function syncModule({ organizationId, module, listName, mappings = [] }) {
             });
             summary.sent += 1;
         } catch (error) {
+            const failure = {
+                recordId: record.id,
+                reason: error.message,
+                providerResponse: error.providerResponse || null
+            };
+
             if (error.message.includes("does not contain a Mobile or Phone")) {
                 summary.skipped += 1;
-                summary.failures.push({
-                    recordId: record.id,
-                    reason: error.message,
-                    type: "skipped"
-                });
+                summary.failures.push({ ...failure, type: "skipped" });
             } else {
                 summary.failed += 1;
-                summary.failures.push({
-                    recordId: record.id,
-                    reason: error.message,
-                    type: "failed"
-                });
+                summary.failures.push({ ...failure, type: "failed" });
             }
         }
     }
