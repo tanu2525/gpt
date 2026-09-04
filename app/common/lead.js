@@ -20,19 +20,31 @@ async function getCrmFields(entity = "Leads") {
     return response.fields || [];
 }
 
-function getRecipientForChannel(lead, channel) {
-    return channel === "email"
-        ? lead?.Email || null
-        : lead?.Mobile || lead?.Phone || null;
+function getRecipientForChannel(record, channel) {
+    return String(channel).toLowerCase() === "email"
+        ? record?.Email || null
+        : record?.Mobile || record?.Phone || null;
+}
+
+function getRecordDisplayName(record, entity = "Leads") {
+    if (entity === "Accounts") {
+        return record?.Account_Name || record?.id || "Unnamed account";
+    }
+
+    if (entity === "Contacts") {
+        return record?.Full_Name || record?.Last_Name || record?.First_Name || record?.id || "Unnamed contact";
+    }
+
+    return record?.Full_Name || record?.Last_Name || record?.First_Name || record?.id || "Unnamed lead";
 }
 
 function getLeadDisplayName(lead) {
-    return lead?.Full_Name || lead?.Last_Name || lead?.id || "Unnamed lead";
+    return getRecordDisplayName(lead, "Leads");
 }
 
-function resolveFieldVariables(fieldMappings, lead) {
+function resolveFieldVariables(fieldMappings, record) {
     return Object.fromEntries(Object.entries(fieldMappings).map(([variable, fieldApiName]) => [
         variable,
-        lead?.[fieldApiName] || ""
+        record?.[fieldApiName] || ""
     ]));
 }
