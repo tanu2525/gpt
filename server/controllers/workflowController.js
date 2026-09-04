@@ -113,13 +113,54 @@ exports.zohoOAuthCallback = async function(req, res) {
     }
 };
 
+// Returns every workflow created for the current Zoho organization.
+// These records are the extension's workflow history and also provide the
+// configuration required when the user clicks Edit in the UI.
+exports.getWorkflowHistory = async function(req, res) {
+    try {
+        const { organizationId } = req.query;
+
+        if (!organizationId) {
+            return res.status(400).json({ success: false, message: "organizationId is required." });
+        }
+
+        const workflows = await WorkflowConfig.find({ organizationId: String(organizationId) })
+            .select("-webhookSecretHash")
+            .sort({ updatedAt: -1, createdAt: -1 })
+            .lean();
+
+        return res.json({ success: true, workflows });
+    } catch (error) {
+        console.error("Get workflow history error:", error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.saveWorkflow = async function(req, res) {
     try {
         const input = validateWorkflowInput(req.body);
-        const existingWorkflow = await WorkflowConfig.findOne({
-            organizationId: input.organizationId,
-            workflowName: input.workflowName
-        }).select("+webhookSecretHash");
+        const requestedWorkflowId = String(req.body.workflowId || "").trim();
+
+        let existingWorkflow = null;
+
+        if (requestedWorkflowId) {
+            existingWorkflow = await WorkflowConfig.findOne({
+                _id: requestedWorkflowId,
+                organizationId: input.organizationId
+            }).select("+webhookSecretHash");
+
+            if (!existingWorkflow) {
+                return res.status(404).json({
+                    success: false,
+                    message: "The workflow you are trying to edit was not found for this Zoho organization."
+                });
+            }
+        } else {
+            existingWorkflow = await WorkflowConfig.findOne({
+                organizationId: input.organizationId,
+                workflowName: input.workflowName
+            }).select("+webhookSecretHash");
+        }
 
         const isUpdate = Boolean(existingWorkflow?.zohoWebhookId || existingWorkflow?.zohoWorkflowRuleId);
         const workflow = existingWorkflow || new WorkflowConfig({
@@ -173,7 +214,7 @@ exports.saveWorkflow = async function(req, res) {
             workflow.webhookUrl = zohoSetup.webhookUrl;
             await workflow.save();
 
-            zohoSetup.updated = isUpdate;
+            zohoSetup.updated = Boolean(existingWorkflow);
         } else {
             await workflow.save();
         }
