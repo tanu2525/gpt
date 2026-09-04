@@ -13,22 +13,40 @@
 <body>
 
 <div class="container">
+    <h2>Authkey Configuration</h2>
 
-<h2>Authkey Configuration</h2>
+    <div id="configurationForm">
+        <label for="email">Authkey Account Email</label>
+        <input
+            id="email"
+            type="email"
+            placeholder="Enter the email used on Authkey"
+            autocomplete="email">
 
-<label>Enter Authkey</label>
+        <label for="authkey">Enter Authkey</label>
+        <input
+            id="authkey"
+            type="password"
+            placeholder="Paste your Authkey here"
+            autocomplete="off">
 
-<input
-id="authkey"
-type="password"
-placeholder="Paste your Authkey here">
+        <button id="saveBtn" type="button">Save</button>
+    </div>
 
-<button id="saveBtn">
-Save
-</button>
+    <div id="configuredView" class="hidden">
+        <div class="credential-row">
+            <span class="credential-label">Email</span>
+            <span id="configuredEmail" class="credential-value"></span>
+        </div>
+        <div class="credential-row">
+            <span class="credential-label">Authkey</span>
+            <span id="configuredAuthkey" class="credential-value"></span>
+        </div>
 
-<p id="status"></p>
+        <button id="changeBtn" type="button">Change Authkey</button>
+    </div>
 
+    <p id="status"></p>
 </div>
 
 <script src="../common/auth.js"></script>
