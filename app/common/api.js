@@ -1,6 +1,6 @@
-const AUTHKEY_EXTENSION_API_BASE_URL =
-    window.AUTHKEY_EXTENSION_API_BASE_URL ||
-    "https://augmented-carefully-unseeing.ngrok-free.dev";
+const AUTHKEY_EXTENSION_API_BASE_URL = String(
+    window.AUTHKEY_EXTENSION_API_BASE_URL || ""
+).trim();
 
 async function requestJson(url, options = {}) {
     const apiUrl = getApiUrl(url);
@@ -37,10 +37,10 @@ function getApiUrl(url) {
     const endpoint = url.startsWith("/") ? url : `/${url}`;
 
     if (AUTHKEY_EXTENSION_API_BASE_URL) {
-        return `${String(AUTHKEY_EXTENSION_API_BASE_URL).replace(/\/$/, "")}${endpoint}`;
+        return `${AUTHKEY_EXTENSION_API_BASE_URL.replace(/\/$/, "")}${endpoint}`;
     }
 
-    return window.location.origin + endpoint;
+    return `${window.location.origin}${endpoint}`;
 }
 
 async function getChannelTemplates(channel) {
