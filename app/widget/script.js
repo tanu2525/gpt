@@ -3,12 +3,34 @@ let moduleName = "Leads";
 let record = null;
 let crmFields = [];
 
+function resolveModuleName(data = {}) {
+    const value = data.Entity || data.Module || data.EntityName || "Leads";
+    const normalized = String(value).trim().toLowerCase();
+
+    const modules = {
+        lead: "Leads",
+        leads: "Leads",
+        contact: "Contacts",
+        contacts: "Contacts",
+        account: "Accounts",
+        accounts: "Accounts"
+    };
+
+    return modules[normalized] || "Leads";
+}
+
+function getModuleSingularName() {
+    if (moduleName === "Contacts") return "Contact";
+    if (moduleName === "Accounts") return "Account";
+    return "Lead";
+}
+
 ZOHO.embeddedApp.on("PageLoad", async data => {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
 
         recordId = Array.isArray(data.EntityId) ? data.EntityId[0] : (data.EntityId || data.RecordID || data.RecordId || data.recordId);
-        moduleName = data.Entity || data.Module || "Leads";
+        moduleName = resolveModuleName(data);
 
         if (!recordId) {
             showError("Unable to determine Record ID.");
@@ -36,8 +58,17 @@ function showError(message) {
 function updateRecipientLabel() {
     const channel = document.getElementById("channel").value;
     const isEmail = channel === "email";
-    document.querySelector("#leadInfo strong").textContent = isEmail ? "Lead Email:" : "Lead Phone:";
-    document.getElementById("leadPhoneLabel").textContent = getRecipientForChannel(record, channel) || (isEmail ? "No Email" : "No Phone");
+    const recordName = getModuleSingularName();
+
+    const strongElement = document.querySelector("#leadInfo strong");
+    if (strongElement) {
+        strongElement.textContent = isEmail ? `${recordName} Email:` : `${recordName} Phone:`;
+    }
+
+    const recipientElement = document.getElementById("leadPhoneLabel");
+    if (recipientElement) {
+        recipientElement.textContent = getRecipientForChannel(record, channel) || (isEmail ? "No Email" : "No Phone");
+    }
 }
 
 function previewSelectedTemplate() {
@@ -96,7 +127,7 @@ async function resetMessageForm() {
         if (container) container.replaceChildren();
     });
 
-    const preview = document.getElementById("templatePreview");
+    const preview = document.getElementById("templatePreview") || document.getElementById("preview");
     if (preview) preview.value = "";
 
     updateRecipientLabel();
