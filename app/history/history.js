@@ -11,8 +11,7 @@ ZOHO.embeddedApp.on("PageLoad", async () => {
     try {
         if (!(await ensureAuthkeyConfigured())) return;
         await loadHistory();
-    } catch (error) {
-        console.error(error);
+    } catch (_) {
     }
 });
 
@@ -58,8 +57,8 @@ async function viewDetails(id) {
 document.getElementById("closeModal").onclick = () => {
     document.getElementById("detailModal").style.display = "none";
 };
-document.getElementById("channelFilter").addEventListener("change", () => loadHistory().catch(console.error));
-document.getElementById("search").addEventListener("input", () => loadHistory().catch(console.error));
+document.getElementById("channelFilter").addEventListener("change", () => loadHistory().catch(() => {}));
+document.getElementById("search").addEventListener("input", () => loadHistory().catch(() => {}));
 
 async function showDetails(event, id) {
     const log = await requestJson(`/api/history/detail/${encodeURIComponent(id)}`);
