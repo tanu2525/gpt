@@ -10,7 +10,6 @@ function maskAuthkey(value) {
     return "••••••••••••";
 }
 
-// Validate and save Authkey
 router.post("/save", async (req, res) => {
     try {
         const { organizationId, email, authkey, fieldMappings = {} } = req.body;
@@ -90,8 +89,6 @@ router.post("/save", async (req, res) => {
             message: "Authkey Saved"
         });
     } catch (err) {
-        console.log(err.response?.data || err.message);
-
         res.status(err.statusCode || 500).json({
             success: false,
             code: err.code,
