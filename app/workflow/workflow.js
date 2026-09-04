@@ -1,5 +1,7 @@
 let moduleFields = [];
 let zohoConnection = null;
+let currentWorkflowId = null;
+let pendingEditWorkflow = null;
 const lookupFieldCache = new Map();
 
 function isZohoConnected(connection) {
@@ -12,22 +14,22 @@ function setStatus(message) {
 }
 
 function setConnectionUi(connection) {
+    const card = document.getElementById("zohoConnectionCard");
     const button = document.getElementById("connectZohoBtn");
     const details = document.getElementById("zohoConnectionStatus");
 
-    if (!button || !details) return;
+    if (!card || !button || !details) return;
 
     const connected = isZohoConnected(connection);
+    card.hidden = connected;
 
     if (connected) {
-        // The user is already connected, so there is no reason to show a
-        // Connect/Reconnect button on the workflow page.
         button.hidden = true;
-        details.textContent = `Connected to ${connection.environment || "Zoho"} environment${connection.apiDomain ? ` (${connection.apiDomain})` : ""}.`;
+        details.textContent = "";
     } else {
         button.hidden = false;
         button.textContent = "Connect Zoho CRM";
-        details.textContent = "Zoho CRM must be connected once before automatic workflow creation can use the Zoho API.";
+        details.textContent = "Connect this Zoho CRM organization before creating or editing a workflow.";
     }
 }
 
@@ -57,12 +59,163 @@ async function connectZoho() {
         }
 
         window.open(result.authorizationUrl, "_blank");
-        setStatus(
-            "Complete Zoho authorization in the opened window. The connection is environment-specific, so your Sandbox and Production organizations are connected separately. Return here and reload this page."
-        );
+        setStatus("Complete Zoho authorization in the opened window. Return here and reopen this workflow page after authorization.");
     } catch (error) {
         setStatus(error.message);
     }
+}
+
+function showHistoryView() {
+    document.getElementById("historyView").hidden = false;
+    document.getElementById("editorView").hidden = true;
+    setStatus("");
+    loadWorkflowHistory().catch(error => setStatus(error.message));
+}
+
+function showEditorView() {
+    document.getElementById("historyView").hidden = true;
+    document.getElementById("editorView").hidden = false;
+}
+
+function resetEditor() {
+    currentWorkflowId = null;
+    pendingEditWorkflow = null;
+    moduleFields = [];
+    lookupFieldCache.clear();
+    document.getElementById("editorTitle").textContent = "Create Workflow";
+    document.getElementById("editorDescription").textContent = "Configure an Authkey message workflow. Zoho automation will be created automatically when you save.";
+    document.getElementById("workflowName").value = "";
+    document.getElementById("trigger").value = "create";
+    document.getElementById("channel").value = "whatsapp";
+    document.getElementById("variablesContainer").innerHTML = "";
+    document.getElementById("workflowForm").hidden = true;
+    document.getElementById("zohoConnectionCard").hidden = false;
+    setStatus("");
+}
+
+async function loadWorkflowHistory() {
+    const organizationId = await getOrganizationId();
+    const result = await requestJson(
+        `/api/workflow/history?organizationId=${encodeURIComponent(organizationId)}`
+    );
+
+    renderWorkflowHistory(result.workflows || []);
+}
+
+function formatWorkflowDate(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+}
+
+function renderWorkflowHistory(workflows) {
+    const tbody = document.getElementById("workflowHistoryBody");
+    tbody.innerHTML = "";
+
+    if (!workflows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No workflow rules have been created yet. Click "Create New Workflow" to create your first workflow.</td></tr>';
+        return;
+    }
+
+    workflows.forEach(workflow => {
+        const row = document.createElement("tr");
+
+        const statusClass = workflow.enabled ? "status-active" : "status-inactive";
+        const statusText = workflow.enabled ? "Active" : "Inactive";
+
+        row.innerHTML = `
+            <td>${escapeHtml(workflow.workflowName || "-")}</td>
+            <td>${escapeHtml(workflow.module || "-")}</td>
+            <td>${escapeHtml(workflow.trigger === "edit" ? "Update" : "Create")}</td>
+            <td>${escapeHtml(String(workflow.channel || "-").toUpperCase())}</td>
+            <td>${escapeHtml(workflow.templateName || workflow.templateId || "-")}</td>
+            <td>${escapeHtml(formatWorkflowDate(workflow.updatedAt))}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td><button type="button" class="edit-workflow-btn">Edit</button></td>
+        `;
+
+        row.querySelector(".edit-workflow-btn").addEventListener("click", () => {
+            openEditorForEdit(workflow).catch(error => setStatus(error.message));
+        });
+
+        tbody.appendChild(row);
+    });
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+async function prepareEditor() {
+    if (!(await ensureAuthkeyConfigured())) return false;
+
+    const connection = await checkZohoConnection();
+    if (!isZohoConnected(connection)) {
+        document.getElementById("workflowForm").hidden = true;
+        setStatus("Connect this Zoho organization once before creating or editing a workflow.");
+        return false;
+    }
+
+    document.getElementById("workflowForm").hidden = false;
+    return true;
+}
+
+async function openEditorForCreate() {
+    resetEditor();
+    showEditorView();
+
+    if (!(await prepareEditor())) return;
+
+    await loadModules();
+    await loadModuleFields();
+    await loadTemplates();
+    await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
+    await previewWorkflow();
+}
+
+async function openEditorForEdit(workflow) {
+    resetEditor();
+    currentWorkflowId = workflow._id;
+    pendingEditWorkflow = workflow;
+    document.getElementById("editorTitle").textContent = "Edit Workflow";
+    document.getElementById("editorDescription").textContent = "Update the workflow configuration. Saving will update the Authkey workflow and recreate the linked Zoho automation.";
+    document.getElementById("workflowName").value = workflow.workflowName || "";
+    document.getElementById("trigger").value = workflow.trigger || "create";
+    document.getElementById("channel").value = workflow.channel || "whatsapp";
+    showEditorView();
+
+    if (!(await prepareEditor())) return;
+
+    await loadModules();
+    document.getElementById("module").value = workflow.module || document.getElementById("module").value;
+    await loadModuleFields();
+    await loadTemplates({ channel: workflow.channel || "whatsapp" });
+
+    const templateSelect = document.getElementById("templateSelect");
+    if (workflow.templateId && [...templateSelect.options].some(option => option.value === String(workflow.templateId))) {
+        templateSelect.value = String(workflow.templateId);
+    }
+
+    populateRecipientFields();
+    if (workflow.recipientField && [...document.getElementById("recipientField").options].some(option => option.value === workflow.recipientField)) {
+        document.getElementById("recipientField").value = workflow.recipientField;
+    }
+
+    await renderMappings(templateSelect.selectedOptions[0]?.dataset.body || "");
+
+    Object.entries(workflow.variables || {}).forEach(([name, value]) => {
+        const mapping = document.getElementById(`map_${name}`);
+        if (mapping && [...mapping.options].some(option => option.value === value)) {
+            mapping.value = value;
+        }
+    });
+
+    await previewWorkflow();
 }
 
 async function loadModules() {
@@ -154,67 +307,6 @@ async function getLookupFields(field) {
     return fields;
 }
 
-async function initializeWorkflow() {
-    try {
-        if (!(await ensureAuthkeyConfigured())) return;
-
-        const connection = await checkZohoConnection();
-        if (!isZohoConnected(connection)) {
-            setStatus("Connect this Zoho organization once to create workflows automatically.");
-            return;
-        }
-
-        await loadModules();
-        await loadModuleFields();
-        await loadTemplates();
-        await previewWorkflow();
-    } catch (error) {
-        setStatus(error.message);
-    }
-}
-
-ZOHO.embeddedApp.on("PageLoad", initializeWorkflow);
-
-async function saveWorkflow() {
-    const variables = {};
-    document.querySelectorAll("#variablesContainer select").forEach(select => {
-        if (select.value) {
-            variables[select.id.replace("map_", "")] = select.value;
-        }
-    });
-
-    const template = document.getElementById("templateSelect").selectedOptions[0];
-    const body = {
-        organizationId: await getOrganizationId(),
-        workflowName: document.getElementById("workflowName").value.trim(),
-        module: document.getElementById("module").value,
-        trigger: document.getElementById("trigger").value,
-        channel: document.getElementById("channel").value,
-        templateId: document.getElementById("templateSelect").value,
-        templateName: template ? template.textContent : "",
-        recipientField: document.getElementById("recipientField").value,
-        variables,
-        autoConfigureZoho: true
-    };
-
-    try {
-        setStatus("Saving workflow and configuring Zoho automation...");
-        const result = await requestJson("/api/workflow/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-        });
-
-        setStatus(result.zoho?.webhookUrl
-            ? (result.zoho.updated
-                ? "Workflow updated and Zoho automation recreated successfully."
-                : "Workflow saved and Zoho webhook + workflow rule configured successfully.")
-            : "Workflow saved successfully.");
-    } catch (error) {
-        setStatus(error.message);
-    }
-}
-
 async function renderMappings(body = "") {
     const container = document.getElementById("variablesContainer");
     container.innerHTML = "";
@@ -256,13 +348,76 @@ async function renderMappings(body = "") {
     });
 }
 
+async function saveWorkflow() {
+    const variables = {};
+    document.querySelectorAll("#variablesContainer select").forEach(select => {
+        if (select.value) {
+            variables[select.id.replace("map_", "")] = select.value;
+        }
+    });
+
+    const template = document.getElementById("templateSelect").selectedOptions[0];
+    const body = {
+        organizationId: await getOrganizationId(),
+        workflowId: currentWorkflowId || undefined,
+        workflowName: document.getElementById("workflowName").value.trim(),
+        module: document.getElementById("module").value,
+        trigger: document.getElementById("trigger").value,
+        channel: document.getElementById("channel").value,
+        templateId: document.getElementById("templateSelect").value,
+        templateName: template ? template.textContent : "",
+        recipientField: document.getElementById("recipientField").value,
+        variables,
+        autoConfigureZoho: true
+    };
+
+    try {
+        setStatus(currentWorkflowId ? "Updating workflow and configuring Zoho automation..." : "Saving workflow and configuring Zoho automation...");
+        const result = await requestJson("/api/workflow/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        setStatus(result.zoho?.webhookUrl
+            ? (currentWorkflowId
+                ? "Workflow updated and Zoho automation recreated successfully."
+                : "Workflow saved and Zoho webhook + workflow rule configured successfully.")
+            : "Workflow saved successfully.");
+
+        setTimeout(() => showHistoryView(), 800);
+    } catch (error) {
+        setStatus(error.message);
+    }
+}
+
+async function initializeWorkflowPage() {
+    try {
+        if (!(await ensureAuthkeyConfigured())) return;
+        await loadWorkflowHistory();
+    } catch (error) {
+        setStatus(error.message);
+    }
+}
+
+ZOHO.embeddedApp.on("PageLoad", initializeWorkflowPage);
+
+document.getElementById("createWorkflowBtn").addEventListener("click", () => {
+    openEditorForCreate().catch(error => setStatus(error.message));
+});
+
+document.getElementById("backToHistoryBtn").addEventListener("click", showHistoryView);
+
 document.getElementById("module").addEventListener("change", () => {
     loadModuleFields().then(previewWorkflow).catch(error => setStatus(error.message));
 });
 
 document.getElementById("channel").addEventListener("change", () => {
     populateRecipientFields();
-    loadTemplates().then(previewWorkflow).catch(error => setStatus(error.message));
+    loadTemplates().then(async () => {
+        await renderMappings(document.getElementById("templateSelect").selectedOptions[0]?.dataset.body || "");
+        await previewWorkflow();
+    }).catch(error => setStatus(error.message));
 });
 
 document.getElementById("templateSelect").addEventListener("change", () => {
@@ -270,6 +425,7 @@ document.getElementById("templateSelect").addEventListener("change", () => {
         .then(previewWorkflow)
         .catch(error => setStatus(error.message));
 });
+
 document.getElementById("connectZohoBtn").addEventListener("click", connectZoho);
 document.getElementById("saveBtn").addEventListener("click", saveWorkflow);
 ZOHO.embeddedApp.init();
